@@ -17,13 +17,17 @@ type Event struct {
 
 type Watcher func(event *Event)
 
+type Watch interface {
+	Close()
+}
+
 type Datastore interface {
 	Initialize() error
 	InsertEvent(event *Event) error
 	// List events starting from a given offset.  Offset = 0 starts at the oldest entry.
 	ListEvents(offset int) ([]*Event, error)
 	//  Watch events starting from a given offset. Offset = 0 starts at the oldest entry. Offset = -1 starts watching new entries
-	WatchEvents(offset int, watcher Watcher) error
+	WatchEvents(offset int, watcher Watcher) (Watch, error)
 	// Read the number of events stored
 	NumEvents() (int, error)
 	Close()

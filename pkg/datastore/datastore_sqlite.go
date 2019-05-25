@@ -77,3 +77,15 @@ func (ds SqlDatastore) InsertEvent(event *Event) error {
 
 	return tx.Commit()
 }
+
+func (ds SqlDatastore) ListEvents(offset int) ([]*Event, error) {
+	return nil, nil
+}
+
+func (ds SqlDatastore) NumEvents() (int, error) {
+	return 0, nil
+}
+
+func (ds SqlDatastore) WatchEvents(offset int, watcher Watcher) (Watch, error) {
+	return nil, nil
+}
