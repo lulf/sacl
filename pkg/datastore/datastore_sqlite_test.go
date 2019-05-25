@@ -27,38 +27,38 @@ func TestInitialize(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
-func TestInsertNewEntry(t *testing.T) {
+func TestInsertEvent(t *testing.T) {
 	os.Remove("insert.db")
 	ds, err := NewSqliteDatastore("insert.db", 2)
 	defer ds.Close()
 	assert.Nil(t, err)
 	assert.NotNil(t, ds)
 
-	err = ds.InsertNewEntry(1, 2, "dev1", "payload1")
+	err = ds.InsertEvent(NewEvent(1, 2, "dev1", "payload1"))
 	assert.NotNil(t, err)
 
 	err = ds.Initialize()
 	assert.Nil(t, err)
-	err = ds.InsertNewEntry(1, 1, "dev1", "payload1")
+	err = ds.InsertEvent(NewEvent(1, 1, "dev1", "payload1"))
 	assert.Nil(t, err)
 
 	count, err := countEntries(t, ds)
 	assert.Nil(t, err)
 	assert.Equal(t, 1, count)
 
-	err = ds.InsertNewEntry(2, 2, "dev2", "payload2")
+	err = ds.InsertEvent(NewEvent(2, 2, "dev2", "payload2"))
 	assert.Nil(t, err)
 	count, err = countEntries(t, ds)
 	assert.Nil(t, err)
 	assert.Equal(t, 2, count)
 
-	err = ds.InsertNewEntry(3, 3, "dev2", "payload3")
+	err = ds.InsertEvent(NewEvent(3, 3, "dev2", "payload3"))
 	assert.Nil(t, err)
 	count, err = countEntries(t, ds)
 	assert.Nil(t, err)
 	assert.Equal(t, 3, count)
 
-	err = ds.InsertNewEntry(4, 4, "dev2", "payload4")
+	err = ds.InsertEvent(NewEvent(4, 4, "dev2", "payload4"))
 	assert.Nil(t, err)
 	count, err = countEntries(t, ds)
 	assert.Nil(t, err)

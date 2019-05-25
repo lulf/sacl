@@ -42,7 +42,7 @@ func (ds SqlDatastore) Initialize() error {
 	return nil
 }
 
-func (ds SqlDatastore) InsertNewEntry(insertTime int64, creationTime int64, deviceId string, payload string) error {
+func (ds SqlDatastore) InsertEvent(event *Event) error {
 	tx, err := ds.handle.Begin()
 	if err != nil {
 		log.Print("Starting transaction:", err)
@@ -63,13 +63,13 @@ func (ds SqlDatastore) InsertNewEntry(insertTime int64, creationTime int64, devi
 	}
 	defer removeStmt.Close()
 
-	_, err = insertStmt.Exec(insertTime, creationTime, deviceId, payload)
+	_, err = insertStmt.Exec(event.insertTime, event.creationTime, event.deviceId, event.payload)
 	if err != nil {
 		log.Print("Inserting entry:", err)
 		return err
 	}
 
-	_, err = removeStmt.Exec(deviceId, deviceId, ds.maxSize)
+	_, err = removeStmt.Exec(event.deviceId, event.deviceId, ds.maxSize)
 	if err != nil {
 		log.Print("Removing oldest entry:", err)
 		return err

@@ -17,7 +17,7 @@ type Event struct {
 
 type Datastore interface {
 	Initialize() error
-	InsertNewEntry(event *Event) error
+	InsertEvent(event *Event) error
 	Close()
 }
 
