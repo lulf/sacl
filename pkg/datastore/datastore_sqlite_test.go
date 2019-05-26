@@ -5,14 +5,22 @@
 package datastore
 
 import (
+	"fmt"
 	"github.com/stretchr/testify/assert"
-	"os"
+	"io/ioutil"
 	"testing"
 )
 
+func tempDbFile(t *testing.T, prefix string) string {
+	f, err := ioutil.TempFile("", fmt.Sprintf("%s.*.db", prefix))
+	assert.Nil(t, err)
+	assert.NotNil(t, f)
+	return f.Name()
+}
+
 func TestInitialize(t *testing.T) {
-	os.Remove("init.db")
-	ds, err := NewSqliteDatastore("init.db", 2)
+	f := tempDbFile(t, "init")
+	ds, err := NewSqliteDatastore(f, 2)
 	defer ds.Close()
 	assert.Nil(t, err)
 	assert.NotNil(t, ds)
@@ -28,8 +36,8 @@ func TestInitialize(t *testing.T) {
 }
 
 func TestInsertEvent(t *testing.T) {
-	os.Remove("insert.db")
-	ds, err := NewSqliteDatastore("insert.db", 2)
+	f := tempDbFile(t, "insert")
+	ds, err := NewSqliteDatastore(f, 2)
 	defer ds.Close()
 	assert.Nil(t, err)
 	assert.NotNil(t, ds)
@@ -63,6 +71,75 @@ func TestInsertEvent(t *testing.T) {
 	count, err = countEntries(t, ds)
 	assert.Nil(t, err)
 	assert.Equal(t, 3, count)
+}
+
+func TestListEvents(t *testing.T) {
+	f := tempDbFile(t, "listevents")
+	ds, err := NewSqliteDatastore(f, 6)
+	defer ds.Close()
+	assert.NotNil(t, ds)
+
+	ds.Initialize()
+	ds.InsertEvent(NewEvent(1, 1, "dev1", "payload1"))
+	ds.InsertEvent(NewEvent(2, 2, "dev1", "payload2"))
+	ds.InsertEvent(NewEvent(3, 3, "dev1", "payload3"))
+	ds.InsertEvent(NewEvent(4, 4, "dev1", "payload4"))
+
+	lst, err := ds.ListEvents(-1, 0)
+	assert.Nil(t, err)
+	assert.Equal(t, 4, len(lst))
+
+	lst, err = ds.ListEvents(-1, 2)
+	assert.Nil(t, err)
+	assert.Equal(t, 2, len(lst))
+
+	lst, err = ds.ListEvents(1, 2)
+	assert.Nil(t, err)
+	assert.Equal(t, 1, len(lst))
+}
+
+func TestNumEvents(t *testing.T) {
+	f := tempDbFile(t, "numevents")
+	ds, err := NewSqliteDatastore(f, 6)
+	defer ds.Close()
+	assert.NotNil(t, ds)
+
+	ds.Initialize()
+	count, err := ds.NumEvents()
+	assert.Nil(t, err)
+	assert.Equal(t, 0, count)
+	ds.InsertEvent(NewEvent(1, 1, "dev1", "payload1"))
+	count, err = ds.NumEvents()
+	assert.Equal(t, 1, count)
+	ds.InsertEvent(NewEvent(2, 2, "dev1", "payload2"))
+	ds.InsertEvent(NewEvent(3, 3, "dev1", "payload3"))
+	count, err = ds.NumEvents()
+	assert.Equal(t, 3, count)
+	ds.InsertEvent(NewEvent(4, 4, "dev1", "payload4"))
+	count, err = ds.NumEvents()
+	assert.Equal(t, 4, count)
+}
+
+func TestWatchEvents(t *testing.T) {
+	f := tempDbFile(t, "watchevents")
+	ds, err := NewSqliteDatastore(f, 6)
+	defer ds.Close()
+	assert.NotNil(t, ds)
+
+	ds.Initialize()
+	ds.InsertEvent(NewEvent(1, 1, "dev1", "payload1"))
+	ds.InsertEvent(NewEvent(2, 2, "dev1", "payload2"))
+
+	var events []*Event
+	w := func(event *Event) error {
+		events = append(events, event)
+		return nil
+	}
+
+	watch, err := ds.WatchEvents(-1, 0, w)
+	assert.Nil(t, err)
+	assert.NotNil(t, watch)
+	//defer watch.Close()
 }
 
 func countEntries(t *testing.T, ds *SqlDatastore) (int, error) {

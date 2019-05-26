@@ -9,13 +9,14 @@ import (
 )
 
 type Event struct {
+	id           uint64
 	insertTime   int64
 	creationTime int64
 	deviceId     string
 	payload      string
 }
 
-type Watcher func(event *Event)
+type Watcher func(event *Event) error
 
 type Watch interface {
 	Close()
@@ -25,9 +26,9 @@ type Datastore interface {
 	Initialize() error
 	InsertEvent(event *Event) error
 	// List events starting from a given offset.  Offset = 0 starts at the oldest entry.
-	ListEvents(offset int) ([]*Event, error)
+	ListEvents(limit int, offset int) ([]*Event, error)
 	//  Watch events starting from a given offset. Offset = 0 starts at the oldest entry. Offset = -1 starts watching new entries
-	WatchEvents(offset int, watcher Watcher) (Watch, error)
+	WatchEvents(limit int, offset int, watcher Watcher) (Watch, error)
 	// Read the number of events stored
 	NumEvents() (int, error)
 	Close()
@@ -35,5 +36,12 @@ type Datastore interface {
 
 type SqlDatastore struct {
 	handle  *sql.DB
+	conn    *sql.Conn
 	maxSize int
+	watches []*SqlWatch
+}
+
+type SqlWatch struct {
+	watcher    Watcher
+	lastSeenId int
 }
