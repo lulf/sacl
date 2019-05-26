@@ -5,9 +5,8 @@
 package datastore
 
 import (
-	"context"
 	"database/sql"
-	sqlite3 "github.com/mattn/go-sqlite3"
+	_ "github.com/mattn/go-sqlite3"
 	"log"
 )
 
@@ -22,18 +21,8 @@ func NewSqliteDatastore(fileName string, maxSize int) (*SqlDatastore, error) {
 		return nil, err
 	}
 
-	conn, err := db.Conn(context.TODO())
-	if err != nil {
-		log.Print("Opening connection:", err)
-		return nil, err
-	}
-
-	watches := make([]*SqlWatch, 0)
-
 	return &SqlDatastore{
 		handle:  db,
-		conn:    conn,
-		watches: watches,
 		maxSize: maxSize,
 	}, nil
 }
@@ -59,7 +48,7 @@ func (ds SqlDatastore) InsertEvent(event *Event) error {
 		return err
 	}
 
-	insertStmt, err := tx.Prepare("INSERT INTO events(insertion_time, creation_time, device_id, payload) values(?, ?, ?, ?)")
+	insertStmt, err := tx.Prepare("INSERT INTO events(id, insertion_time, creation_time, device_id, payload) values(?, ?, ?, ?, ?)")
 	if err != nil {
 		log.Print("Preparing insert statement:", err)
 		return err
@@ -73,13 +62,13 @@ func (ds SqlDatastore) InsertEvent(event *Event) error {
 	}
 	defer removeStmt.Close()
 
-	_, err = insertStmt.Exec(event.insertTime, event.creationTime, event.deviceId, event.payload)
+	_, err = insertStmt.Exec(event.Id, event.InsertTime, event.CreationTime, event.DeviceId, event.Payload)
 	if err != nil {
 		log.Print("Inserting entry:", err)
 		return err
 	}
 
-	_, err = removeStmt.Exec(event.deviceId, event.deviceId, ds.maxSize)
+	_, err = removeStmt.Exec(event.DeviceId, event.DeviceId, ds.maxSize)
 	if err != nil {
 		log.Print("Removing oldest entry:", err)
 		return err
@@ -89,7 +78,7 @@ func (ds SqlDatastore) InsertEvent(event *Event) error {
 }
 
 func (ds SqlDatastore) ListEvents(limit int, offset int) ([]*Event, error) {
-	stmt, err := ds.handle.Prepare("SELECT insertion_time, creation_time, device_id, payload FROM events ORDER BY insertion_time DESC LIMIT ? OFFSET ?")
+	stmt, err := ds.handle.Prepare("SELECT id, insertion_time, creation_time, device_id, payload FROM events ORDER BY insertion_time DESC LIMIT ? OFFSET ?")
 	if err != nil {
 		log.Print("Preparing query:", err)
 		return nil, err
@@ -116,7 +105,7 @@ func (ds SqlDatastore) ListEvents(limit int, offset int) ([]*Event, error) {
 			return nil, err
 		}
 
-		events = append(events, NewEventWithId(id, insertionTime, creationTime, deviceId, payload))
+		events = append(events, NewEvent(id, insertionTime, creationTime, deviceId, payload))
 	}
 
 	return events, nil
@@ -127,54 +116,4 @@ func (ds SqlDatastore) NumEvents() (int, error) {
 	row := ds.handle.QueryRow("SELECT COUNT(id) FROM events")
 	err := row.Scan(&count)
 	return count, err
-}
-
-func (ds SqlDatastore) WatchEvents(limit int, offset int, watcher Watcher) (Watch, error) {
-	watch := &SqlWatch{
-		watcher:    watcher,
-		lastSeenId: 0,
-	}
-	if len(ds.watches) == 0 {
-		s3conn := ds.conn.(*sqlite3.SQLiteConn)
-		s3conn.RegisterUpdateHook(func(op int, db string, table string, rowid int64) {
-			switch op {
-			case sqlite3.SQLITE_INSERT:
-				if len(ds.watches) > 0 {
-					stmt, err := ds.handle.Prepare("SELECT id, insertion_time, creation_time, device_id, payload FROM ? WHERE rowid = ?")
-					if err != nil {
-						log.Print("Query row:", err)
-						return
-					}
-
-					rows, err := stmt.Query(table, rowid)
-
-					var events []*Event
-					for rows.Next() {
-						var id uint64
-						var insertionTime int64
-						var creationTime int64
-						var deviceId string
-						var payload string
-
-						err = rows.Scan(&id, &insertionTime, &creationTime, &deviceId, &payload)
-						if err != nil {
-							log.Print("Scan row:", err)
-							return
-						}
-
-						events = append(events, NewEventWithId(id, insertionTime, creationTime, deviceId, payload))
-					}
-
-					for _, event := range events {
-
-						for _, watch := range ds.watches {
-							watch.watcher(event)
-						}
-					}
-				}
-			}
-		})
-	}
-	ds.watches = append(ds.watches, watch)
-	return nil, nil
 }

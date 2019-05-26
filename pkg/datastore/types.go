@@ -9,11 +9,11 @@ import (
 )
 
 type Event struct {
-	id           uint64
-	insertTime   int64
-	creationTime int64
-	deviceId     string
-	payload      string
+	Id           uint64 `json:"id"`
+	InsertTime   int64  `json:"insertTime"`
+	CreationTime int64  `json:"creationTime"`
+	DeviceId     string `json:"deviceId"`
+	Payload      string `json:"payload"`
 }
 
 type Watcher func(event *Event) error
