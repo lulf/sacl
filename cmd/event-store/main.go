@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"qpid.apache.org/electron"
+	"sync/atomic"
 )
 
 func main() {
@@ -52,8 +53,12 @@ func main() {
 	defer listener.Close()
 	fmt.Printf("Listening on %v\n", listener.Addr())
 
+	var eventIdCounter uint64
+	eventIdCounter, err = ds.LastEventId()
+	if err != nil {
+		log.Fatal("Initializing id counter", err)
+	}
 	container := electron.NewContainer("event-store")
-
 	for {
 		conn, err := container.Accept(listener)
 		if err != nil {
@@ -61,10 +66,15 @@ func main() {
 			continue
 		}
 		go func(conn electron.Connection) {
+			lock := sync.Mutex()
+			senders := make([]electron.Sender, 0)
 			for in := range conn.Incoming() {
 				switch in := in.(type) {
 				case *electron.IncomingSender:
 					snd := in.Accept().(electron.Sender)
+					lock.Lock()
+					senders = append(senders, snd)
+					lock.Unlock()
 					go func(snd electron.Sender) {
 
 					}(snd)
@@ -82,10 +92,17 @@ func main() {
 								if err != nil {
 									rm.Reject()
 								} else {
+									event.Id = atomic.AddUint64(&eventIdCounter, 1)
 									err = ds.InsertEvent(&event)
 									if err != nil {
 										rm.Reject()
 									} else {
+										lock.Lock()
+										for _, sender := range senders {
+											sender.SendForget(m)
+											// TODO: Notify senders
+										}
+										lock.Unlock()
 										rm.Accept()
 									}
 								}
@@ -100,4 +117,9 @@ func main() {
 		}(conn)
 	}
 
+}
+
+type Sender struct {
+	sender     electron.Sender
+	lastSeenId uint64
 }
