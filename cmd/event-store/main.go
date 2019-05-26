@@ -87,12 +87,17 @@ func main() {
 							if rm, err := rcv.Receive(); err == nil {
 								m := rm.Message
 								var event datastore.Event
-								err := json.Unmarshal(m.Body().([]byte), &event)
-								if err != nil {
-									rm.Reject()
-								} else {
-									el.AddEvent(&event)
-									rm.Accept()
+								body := m.Body()
+								switch t := body.(type) {
+								default:
+									fmt.Println("TYPE:", t)
+									err := json.Unmarshal(m.Body().([]byte), &event)
+									if err != nil {
+										rm.Reject()
+									} else {
+										el.AddEvent(&event)
+										rm.Accept()
+									}
 								}
 							}
 						}
