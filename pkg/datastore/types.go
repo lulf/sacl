@@ -10,7 +10,7 @@ import (
 
 type Event struct {
 	Id           uint64 `json:"-"`
-	InsertTime   int64  `json:"insertTime"`
+	InsertTime   int64  `json:"insertTime,omitempty"`
 	CreationTime int64  `json:"creationTime"`
 	DeviceId     string `json:"deviceId"`
 	Payload      string `json:"payload"`

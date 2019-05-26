@@ -9,28 +9,31 @@ import (
 	"flag"
 	"fmt"
 	"github.com/lulf/teig-event-store/pkg/datastore"
+	"github.com/lulf/teig-event-store/pkg/eventlog"
 	"log"
 	"net"
 	"os"
+	"qpid.apache.org/amqp"
 	"qpid.apache.org/electron"
-	"sync/atomic"
 )
 
 func main() {
 
 	var dbfile string
 	var maxlogsize int
+	var defaultReplayCount int
 	var listenAddr string
 	var listenPort int
 
 	flag.StringVar(&dbfile, "d", "store.db", "Path to database file (default: store.db)")
 	flag.IntVar(&maxlogsize, "m", 100, "Max number of entries in log (default: 100)")
+	flag.IntVar(&defaultReplayCount, "c", 10, "Default number of events to replay for new subscribers (default: 10)")
 	flag.StringVar(&listenAddr, "l", "127.0.0.1", "Address of AMQP event source (default: 127.0.0.1)")
 	flag.IntVar(&listenPort, "p", 5672, "Port to listen on (default: 5672)")
 
 	flag.Usage = func() {
 		fmt.Printf("Usage of %s:\n", os.Args[0])
-		fmt.Printf("    [-l 0.0.0.0] [-p 5672] [-m 100] [-d store.db]\n")
+		fmt.Printf("    [-l 0.0.0.0] [-p 5672] [-c 10] [-m 100] [-d store.db]\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -46,6 +49,11 @@ func main() {
 		log.Fatal("Initializing Datastore:", err)
 	}
 
+	el, err := eventlog.NewEventLog(ds)
+	if err != nil {
+		log.Fatal("Initializing Eventstore:", err)
+	}
+
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", listenAddr, listenPort))
 	if err != nil {
 		log.Fatal("Listening:", err)
@@ -53,11 +61,6 @@ func main() {
 	defer listener.Close()
 	fmt.Printf("Listening on %v\n", listener.Addr())
 
-	var eventIdCounter uint64
-	eventIdCounter, err = ds.LastEventId()
-	if err != nil {
-		log.Fatal("Initializing id counter", err)
-	}
 	container := electron.NewContainer("event-store")
 	for {
 		conn, err := container.Accept(listener)
@@ -66,22 +69,21 @@ func main() {
 			continue
 		}
 		go func(conn electron.Connection) {
-			lock := sync.Mutex()
-			senders := make([]electron.Sender, 0)
 			for in := range conn.Incoming() {
 				switch in := in.(type) {
 				case *electron.IncomingSender:
 					snd := in.Accept().(electron.Sender)
-					lock.Lock()
-					senders = append(senders, snd)
-					lock.Unlock()
-					go func(snd electron.Sender) {
-
-					}(snd)
+					outgoing := make(chan *amqp.Message, defaultReplayCount)
+					sub := eventlog.NewSubscriber(snd.LinkName(), defaultReplayCount, outgoing)
+					el.AddSubscriber(sub)
+					go func(snd electron.Sender, outgoing chan *amqp.Message) {
+						m := <-outgoing
+						snd.SendSync(*m)
+					}(snd, outgoing)
 
 				case *electron.IncomingReceiver:
 					in.SetPrefetch(true)
-					in.SetCapacity(10) // TODO: Make configurable
+					in.SetCapacity(10) // TODO: Adjust based on backlog
 					rcv := in.Accept().(electron.Receiver)
 					go func(rcv electron.Receiver) {
 						for {
@@ -92,19 +94,8 @@ func main() {
 								if err != nil {
 									rm.Reject()
 								} else {
-									event.Id = atomic.AddUint64(&eventIdCounter, 1)
-									err = ds.InsertEvent(&event)
-									if err != nil {
-										rm.Reject()
-									} else {
-										lock.Lock()
-										for _, sender := range senders {
-											sender.SendForget(m)
-											// TODO: Notify senders
-										}
-										lock.Unlock()
-										rm.Accept()
-									}
+									el.AddEvent(&event)
+									rm.Accept()
 								}
 							}
 						}
@@ -117,9 +108,4 @@ func main() {
 		}(conn)
 	}
 
-}
-
-type Sender struct {
-	sender     electron.Sender
-	lastSeenId uint64
 }
