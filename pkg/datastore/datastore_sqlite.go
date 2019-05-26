@@ -48,7 +48,7 @@ func (ds SqlDatastore) InsertEvent(event *Event) error {
 		return err
 	}
 
-	insertStmt, err := tx.Prepare("INSERT INTO events(id, insertion_time, creation_time, device_id, payload) values(?, ?, ?, ?, ?)")
+	insertStmt, err := tx.Prepare("INSERT INTO events(insertion_time, creation_time, device_id, payload) values(?, ?, ?, ?)")
 	if err != nil {
 		log.Print("Preparing insert statement:", err)
 		return err
@@ -62,7 +62,7 @@ func (ds SqlDatastore) InsertEvent(event *Event) error {
 	}
 	defer removeStmt.Close()
 
-	_, err = insertStmt.Exec(event.Id, event.InsertTime, event.CreationTime, event.DeviceId, event.Payload)
+	_, err = insertStmt.Exec(event.InsertTime, event.CreationTime, event.DeviceId, event.Payload)
 	if err != nil {
 		log.Print("Inserting entry:", err)
 		return err
@@ -78,7 +78,7 @@ func (ds SqlDatastore) InsertEvent(event *Event) error {
 }
 
 func (ds SqlDatastore) ListEvents(limit int, offset int) ([]*Event, error) {
-	stmt, err := ds.handle.Prepare("SELECT id, insertion_time, creation_time, device_id, payload FROM events ORDER BY insertion_time DESC LIMIT ? OFFSET ?")
+	stmt, err := ds.handle.Prepare("SELECT insertion_time, creation_time, device_id, payload FROM events ORDER BY insertion_time DESC LIMIT ? OFFSET ?")
 	if err != nil {
 		log.Print("Preparing query:", err)
 		return nil, err
@@ -93,19 +93,18 @@ func (ds SqlDatastore) ListEvents(limit int, offset int) ([]*Event, error) {
 
 	var events []*Event
 	for rows.Next() {
-		var id uint64
 		var insertionTime int64
 		var creationTime int64
 		var deviceId string
 		var payload string
 
-		err = rows.Scan(&id, &insertionTime, &creationTime, &deviceId, &payload)
+		err = rows.Scan(&insertionTime, &creationTime, &deviceId, &payload)
 		if err != nil {
 			log.Print("Scan row:", err)
 			return nil, err
 		}
 
-		events = append(events, NewEvent(id, insertionTime, creationTime, deviceId, payload))
+		events = append(events, NewEvent(insertionTime, creationTime, deviceId, payload))
 	}
 
 	return events, nil
@@ -116,11 +115,4 @@ func (ds SqlDatastore) NumEvents() (int, error) {
 	row := ds.handle.QueryRow("SELECT COUNT(id) FROM events")
 	err := row.Scan(&count)
 	return count, err
-}
-
-func (ds SqlDatastore) LastEventId() (uint64, error) {
-	var id uint64
-	row := ds.handle.QueryRow("SELECT MAX(id) FROM events")
-	err := row.Scan(&id)
-	return id, err
 }

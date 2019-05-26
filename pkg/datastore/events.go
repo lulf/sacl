@@ -4,9 +4,8 @@
  */
 package datastore
 
-func NewEvent(id uint64, insertTime int64, creationTime int64, deviceId string, payload string) *Event {
+func NewEvent(insertTime int64, creationTime int64, deviceId string, payload string) *Event {
 	return &Event{
-		Id:           id,
 		InsertTime:   insertTime,
 		CreationTime: creationTime,
 		DeviceId:     deviceId,

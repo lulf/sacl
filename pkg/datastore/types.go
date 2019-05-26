@@ -9,7 +9,6 @@ import (
 )
 
 type Event struct {
-	Id           uint64 `json:"-"`
 	InsertTime   int64  `json:"insertTime,omitempty"`
 	CreationTime int64  `json:"creationTime"`
 	DeviceId     string `json:"deviceId"`
@@ -21,8 +20,6 @@ type Datastore interface {
 	InsertEvent(event *Event) error
 	// List events starting from a given offset.  Offset = 0 starts at the oldest entry.
 	ListEvents(limit int, offset int) ([]*Event, error)
-	// Read the last event id
-	LastEventId() (uint64, error)
 	// Read the number of events stored
 	NumEvents() (int, error)
 	Close()

@@ -49,10 +49,7 @@ func main() {
 		log.Fatal("Initializing Datastore:", err)
 	}
 
-	el, err := eventlog.NewEventLog(ds)
-	if err != nil {
-		log.Fatal("Initializing Eventstore:", err)
-	}
+	el := eventlog.NewEventLog(ds)
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", listenAddr, listenPort))
 	if err != nil {

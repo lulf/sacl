@@ -10,8 +10,6 @@ import (
 	"github.com/lulf/teig-event-store/pkg/datastore"
 	"log"
 	"qpid.apache.org/amqp"
-	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -22,20 +20,13 @@ func max(a, b int) int {
 	return a
 }
 
-func NewEventLog(ds datastore.Datastore) (*EventLog, error) {
-	var eventIdCounter uint64
-	eventIdCounter, err := ds.LastEventId()
-	if err != nil {
-		return nil, err
-	}
+func NewEventLog(ds datastore.Datastore) *EventLog {
 	return &EventLog{
-		lock:           &sync.Mutex{},
 		ds:             ds,
-		idCounter:      eventIdCounter,
-		incomingEvents: make(chan *datastore.Event),
-		incomingSubs:   make(chan *Subscriber),
+		incomingEvents: make(chan *datastore.Event, 10),
+		incomingSubs:   make(chan *Subscriber, 10),
 		subs:           make([]*Subscriber, 0),
-	}, nil
+	}
 }
 
 func (el *EventLog) AddSubscriber(sub *Subscriber) {
@@ -50,7 +41,6 @@ func (el *EventLog) Run() {
 	for {
 		select {
 		case e := <-el.incomingEvents:
-			e.Id = atomic.AddUint64(&el.idCounter, 1)
 			e.InsertTime = time.Now().UTC().Unix()
 
 			err := el.ds.InsertEvent(e)
