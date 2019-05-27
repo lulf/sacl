@@ -69,28 +69,30 @@ func main() {
 			log.Print("Accept error:", err)
 			continue
 		}
-		go func(conn electron.Connection) {
-			for in := range conn.Incoming() {
-				switch in := in.(type) {
-				case *electron.IncomingSender:
-					snd := in.Accept().(electron.Sender)
-					// TODO: Read offset from properties
-					sub := el.NewSubscriber(snd.LinkName(), -1)
-					el.AddSubscriber(sub)
-					go sender(snd, sub)
-
-				case *electron.IncomingReceiver:
-					in.SetPrefetch(true)
-					in.SetCapacity(10) // TODO: Adjust based on backlog
-					rcv := in.Accept().(electron.Receiver)
-					go receiver(rcv, el)
-				default:
-					in.Accept()
-				}
-			}
-		}(conn)
+		go connection(conn, el)
 	}
 
+}
+
+func connection(conn electron.Connection, el *eventlog.EventLog) {
+	for in := range conn.Incoming() {
+		switch in := in.(type) {
+		case *electron.IncomingSender:
+			snd := in.Accept().(electron.Sender)
+			// TODO: Read offset from properties
+			sub := el.NewSubscriber(snd.LinkName(), -1)
+			el.AddSubscriber(sub)
+			go sender(snd, sub)
+
+		case *electron.IncomingReceiver:
+			in.SetPrefetch(true)
+			in.SetCapacity(10) // TODO: Adjust based on backlog
+			rcv := in.Accept().(electron.Receiver)
+			go receiver(rcv, el)
+		default:
+			in.Accept()
+		}
+	}
 }
 
 func sender(snd electron.Sender, sub *eventlog.Subscriber) {
