@@ -41,6 +41,7 @@ func (el *EventLog) Run() {
 	for {
 		select {
 		case e := <-el.incomingEvents:
+			log.Print("New event to persist:", e)
 			e.InsertTime = time.Now().UTC().Unix()
 
 			err := el.ds.InsertEvent(e)
@@ -53,17 +54,21 @@ func (el *EventLog) Run() {
 			data, err := json.Marshal(e)
 			m.Marshal(data)
 			for _, sub := range el.subs {
+				log.Print("Forwarding event to sub")
 				sub.outgoing <- &m
 			}
 
 		case sub := <-el.incomingSubs:
+			log.Print("New subscription!")
 			el.subs = append(el.subs, sub)
 			if sub.replay > 0 {
 				count, err := el.ds.NumEvents()
 				if err != nil {
 					log.Print("Reading num events:", err)
 				} else {
-					events, err := el.ds.ListEvents(sub.replay, max(0, count-sub.replay))
+					offset := max(0, count-sub.replay)
+					log.Print("Replaying with offset:", offset)
+					events, err := el.ds.ListEvents(sub.replay, offset)
 					if err != nil {
 						log.Print("Listing events:", err)
 					} else {
@@ -74,6 +79,7 @@ func (el *EventLog) Run() {
 								log.Print("Encoding json:", err)
 							} else {
 								m.Marshal(data)
+								log.Print("Encoding and sending")
 								sub.outgoing <- &m
 							}
 						}

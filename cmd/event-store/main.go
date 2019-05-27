@@ -50,6 +50,7 @@ func main() {
 	}
 
 	el := eventlog.NewEventLog(ds)
+	go el.Run()
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", listenAddr, listenPort))
 	if err != nil {
@@ -74,8 +75,10 @@ func main() {
 					sub := eventlog.NewSubscriber(snd.LinkName(), defaultReplayCount, outgoing)
 					el.AddSubscriber(sub)
 					go func(snd electron.Sender, outgoing chan *amqp.Message) {
-						m := <-outgoing
-						snd.SendSync(*m)
+						for {
+							m := <-outgoing
+							snd.SendSync(*m)
+						}
 					}(snd, outgoing)
 
 				case *electron.IncomingReceiver:
@@ -88,16 +91,21 @@ func main() {
 								m := rm.Message
 								var event datastore.Event
 								body := m.Body()
+								var bodyBytes []byte
 								switch t := body.(type) {
+								case amqp.Binary:
+									bodyBytes = []byte(body.(amqp.Binary).String())
 								default:
-									fmt.Println("TYPE:", t)
-									err := json.Unmarshal(m.Body().([]byte), &event)
-									if err != nil {
-										rm.Reject()
-									} else {
-										el.AddEvent(&event)
-										rm.Accept()
-									}
+									log.Print("Unsupported type:", t)
+								}
+								err := json.Unmarshal(bodyBytes, &event)
+								if err != nil {
+									rm.Reject()
+								} else {
+									log.Print("Adding event:", event)
+									el.AddEvent(&event)
+									log.Print("Acknowledging!")
+									rm.Accept()
 								}
 							}
 						}
