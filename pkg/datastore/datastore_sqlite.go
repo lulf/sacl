@@ -78,7 +78,7 @@ func (ds SqlDatastore) InsertEvent(event *Event) error {
 }
 
 func (ds SqlDatastore) ListEvents(limit int64, offset int64) ([]*Event, error) {
-	stmt, err := ds.handle.Prepare("SELECT id, insertion_time, creation_time, device_id, payload FROM events WHERE id >= ? ORDER BY id ASC LIMIT ?")
+	stmt, err := ds.handle.Prepare("SELECT id, insertion_time, creation_time, device_id, payload FROM events WHERE id > ? ORDER BY id ASC LIMIT ?")
 	if err != nil {
 		log.Print("Preparing query:", err)
 		return nil, err
@@ -119,11 +119,8 @@ func (ds SqlDatastore) NumEvents() (int64, error) {
 }
 
 func (ds SqlDatastore) LastEventId() (int64, error) {
-	var count int64
+	var count sql.NullInt64
 	row := ds.handle.QueryRow("SELECT MAX(id) FROM events")
 	err := row.Scan(&count)
-	if err == sql.ErrNoRows {
-		return 0, nil
-	}
-	return count, err
+	return count.Int64, err
 }

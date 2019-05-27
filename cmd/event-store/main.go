@@ -74,6 +74,7 @@ func main() {
 				switch in := in.(type) {
 				case *electron.IncomingSender:
 					snd := in.Accept().(electron.Sender)
+					// TODO: Read offset from properties
 					sub := el.NewSubscriber(snd.LinkName(), -1)
 					go func(snd electron.Sender, sub *eventlog.Subscriber) {
 						for {
@@ -91,7 +92,6 @@ func main() {
 									continue
 								}
 								m.Marshal(data)
-								log.Print("Sending event to sub:", event.Id)
 								snd.SendSync(m)
 								sub.Commit(event.Id)
 							}
@@ -120,9 +120,7 @@ func main() {
 								if err != nil {
 									rm.Reject()
 								} else {
-									log.Print("Adding event:", event)
 									el.AddEvent(&event)
-									log.Print("Acknowledging!")
 									rm.Accept()
 								}
 							}

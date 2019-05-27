@@ -6,7 +6,6 @@
 package eventlog
 
 import (
-	"encoding/json"
 	"github.com/lulf/teig-event-store/pkg/datastore"
 	"log"
 	"sync"
@@ -48,7 +47,6 @@ func (el *EventLog) Run() {
 	for {
 		select {
 		case e := <-el.incomingEvents:
-			log.Print("New event to persist:", e)
 			e.InsertTime = time.Now().UTC().Unix()
 			e.Id = atomic.AddInt64(&el.idCounter, 1)
 			err := el.ds.InsertEvent(e)
@@ -58,12 +56,9 @@ func (el *EventLog) Run() {
 			}
 			atomic.StoreInt64(&el.lastCommitted, e.Id)
 			for _, sub := range el.subs {
-				log.Print("Waiting up sub!")
 				sub.cond.Signal()
 			}
-			log.Print("Done with this event!")
 		case sub := <-el.incomingSubs:
-			log.Print("New subscription!")
 			el.subs = append(el.subs, sub)
 		}
 	}
@@ -73,7 +68,7 @@ func (el *EventLog) NewSubscriber(id string, offset int64) *Subscriber {
 	lock := &sync.Mutex{}
 	cond := sync.NewCond(lock)
 	if offset == -1 {
-		offset = atomic.LoadInt64(&el.lastCommitted)
+		offset = atomic.LoadInt64(&el.lastCommitted) - 10
 	}
 	return &Subscriber{
 		id:     id,
@@ -87,11 +82,9 @@ func (el *EventLog) NewSubscriber(id string, offset int64) *Subscriber {
 func (s *Subscriber) Poll() ([]*datastore.Event, error) {
 	el := s.el
 	var lastCommitted int64
-	log.Print("Polling for events from offset", s.offset)
 	s.lock.Lock()
 	for {
 		lastCommitted = atomic.LoadInt64(&el.lastCommitted)
-		log.Print("Last commited is ", lastCommitted)
 		if lastCommitted == s.offset {
 			s.cond.Wait()
 		} else {
@@ -99,13 +92,9 @@ func (s *Subscriber) Poll() ([]*datastore.Event, error) {
 		}
 	}
 	s.lock.Unlock()
-	events, err := el.ds.ListEvents(-1, s.offset)
-	v, _ := json.Marshal(events)
-	log.Print("Found events: ", string(v))
-	return events, err
+	return el.ds.ListEvents(-1, s.offset)
 }
 
 func (s *Subscriber) Commit(offset int64) {
-	log.Print("Commit offset:", offset)
 	s.offset = offset
 }

@@ -107,17 +107,17 @@ func TestNumEvents(t *testing.T) {
 	ds.Initialize()
 	count, err := ds.NumEvents()
 	assert.Nil(t, err)
-	assert.Equal(t, 0, count)
+	assert.Equal(t, 0, int(count))
 	ds.InsertEvent(NewEvent(1, 1, 1, "dev1", "payload1"))
 	count, err = ds.NumEvents()
-	assert.Equal(t, 1, count)
+	assert.Equal(t, 1, int(count))
 	ds.InsertEvent(NewEvent(2, 2, 2, "dev1", "payload2"))
 	ds.InsertEvent(NewEvent(3, 3, 3, "dev1", "payload3"))
 	count, err = ds.NumEvents()
-	assert.Equal(t, 3, count)
+	assert.Equal(t, 3, int(count))
 	ds.InsertEvent(NewEvent(4, 4, 4, "dev1", "payload4"))
 	count, err = ds.NumEvents()
-	assert.Equal(t, 4, count)
+	assert.Equal(t, 4, int(count))
 }
 
 func countEntries(t *testing.T, ds *SqlDatastore) (int, error) {
