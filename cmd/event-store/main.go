@@ -76,62 +76,66 @@ func main() {
 					snd := in.Accept().(electron.Sender)
 					// TODO: Read offset from properties
 					sub := el.NewSubscriber(snd.LinkName(), -1)
-					go func(snd electron.Sender, sub *eventlog.Subscriber) {
-						for {
-							events, err := sub.Poll()
-							if err != nil {
-								log.Print("Error polling events for sub", err)
-								// TODO: Close sub
-								continue
-							}
-							for _, event := range events {
-								m := amqp.NewMessage()
-								data, err := json.Marshal(event)
-								if err != nil {
-									log.Print("Serializing event:", event)
-									continue
-								}
-								m.Marshal(data)
-								snd.SendSync(m)
-								sub.Commit(event.Id)
-							}
-						}
-					}(snd, sub)
 					el.AddSubscriber(sub)
+					go sender(snd, sub)
 
 				case *electron.IncomingReceiver:
 					in.SetPrefetch(true)
 					in.SetCapacity(10) // TODO: Adjust based on backlog
 					rcv := in.Accept().(electron.Receiver)
-					go func(rcv electron.Receiver) {
-						for {
-							if rm, err := rcv.Receive(); err == nil {
-								m := rm.Message
-								var event datastore.Event
-								body := m.Body()
-								var bodyBytes []byte
-								switch t := body.(type) {
-								case amqp.Binary:
-									bodyBytes = []byte(body.(amqp.Binary).String())
-								default:
-									log.Print("Unsupported type:", t)
-								}
-								err := json.Unmarshal(bodyBytes, &event)
-								if err != nil {
-									rm.Reject()
-								} else {
-									el.AddEvent(&event)
-									rm.Accept()
-								}
-							}
-						}
-
-					}(rcv)
+					go receiver(rcv, el)
 				default:
 					in.Accept()
 				}
 			}
 		}(conn)
+	}
+
+}
+
+func sender(snd electron.Sender, sub *eventlog.Subscriber) {
+	for {
+		events, err := sub.Poll()
+		if err != nil {
+			log.Print("Error polling events for sub", err)
+			// TODO: Close sub
+			continue
+		}
+		for _, event := range events {
+			m := amqp.NewMessage()
+			data, err := json.Marshal(event)
+			if err != nil {
+				log.Print("Serializing event:", event)
+				continue
+			}
+			m.Marshal(data)
+			snd.SendSync(m)
+			sub.Commit(event.Id)
+		}
+	}
+}
+
+func receiver(rcv electron.Receiver, el *eventlog.EventLog) {
+	for {
+		if rm, err := rcv.Receive(); err == nil {
+			m := rm.Message
+			var event datastore.Event
+			body := m.Body()
+			var bodyBytes []byte
+			switch t := body.(type) {
+			case amqp.Binary:
+				bodyBytes = []byte(body.(amqp.Binary).String())
+			default:
+				log.Print("Unsupported type:", t)
+			}
+			err := json.Unmarshal(bodyBytes, &event)
+			if err != nil {
+				rm.Reject()
+			} else {
+				el.AddEvent(&event)
+				rm.Accept()
+			}
+		}
 	}
 
 }
