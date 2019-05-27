@@ -49,7 +49,10 @@ func main() {
 		log.Fatal("Initializing Datastore:", err)
 	}
 
-	el := eventlog.NewEventLog(ds)
+	el, err := eventlog.NewEventLog(ds)
+	if err != nil {
+		log.Fatal("Creating eventlog:", err)
+	}
 	go el.Run()
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", listenAddr, listenPort))
@@ -71,15 +74,30 @@ func main() {
 				switch in := in.(type) {
 				case *electron.IncomingSender:
 					snd := in.Accept().(electron.Sender)
-					outgoing := make(chan *amqp.Message, defaultReplayCount)
-					sub := eventlog.NewSubscriber(snd.LinkName(), defaultReplayCount, outgoing)
-					el.AddSubscriber(sub)
-					go func(snd electron.Sender, outgoing chan *amqp.Message) {
+					sub := el.NewSubscriber(snd.LinkName(), -1)
+					go func(snd electron.Sender, sub *eventlog.Subscriber) {
 						for {
-							m := <-outgoing
-							snd.SendSync(*m)
+							events, err := sub.Poll()
+							if err != nil {
+								log.Print("Error polling events for sub", err)
+								// TODO: Close sub
+								continue
+							}
+							for _, event := range events {
+								m := amqp.NewMessage()
+								data, err := json.Marshal(event)
+								if err != nil {
+									log.Print("Serializing event:", event)
+									continue
+								}
+								m.Marshal(data)
+								log.Print("Sending event to sub:", event.Id)
+								snd.SendSync(m)
+								sub.Commit(event.Id)
+							}
 						}
-					}(snd, outgoing)
+					}(snd, sub)
+					el.AddSubscriber(sub)
 
 				case *electron.IncomingReceiver:
 					in.SetPrefetch(true)

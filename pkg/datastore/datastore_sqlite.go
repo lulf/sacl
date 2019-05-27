@@ -48,21 +48,21 @@ func (ds SqlDatastore) InsertEvent(event *Event) error {
 		return err
 	}
 
-	insertStmt, err := tx.Prepare("INSERT INTO events(insertion_time, creation_time, device_id, payload) values(?, ?, ?, ?)")
+	insertStmt, err := tx.Prepare("INSERT INTO events(id, insertion_time, creation_time, device_id, payload) values(?, ?, ?, ?, ?)")
 	if err != nil {
 		log.Print("Preparing insert statement:", err)
 		return err
 	}
 	defer insertStmt.Close()
 
-	removeStmt, err := tx.Prepare("DELETE FROM events WHERE device_id=? AND id NOT IN (SELECT id FROM events WHERE device_id=? ORDER BY insertion_time DESC LIMIT ?)")
+	removeStmt, err := tx.Prepare("DELETE FROM events WHERE device_id=? AND id NOT IN (SELECT id FROM events WHERE device_id=? ORDER BY id DESC LIMIT ?)")
 	if err != nil {
 		log.Print("Preparing remove statement:", err)
 		return err
 	}
 	defer removeStmt.Close()
 
-	_, err = insertStmt.Exec(event.InsertTime, event.CreationTime, event.DeviceId, event.Payload)
+	_, err = insertStmt.Exec(event.Id, event.InsertTime, event.CreationTime, event.DeviceId, event.Payload)
 	if err != nil {
 		log.Print("Inserting entry:", err)
 		return err
@@ -77,15 +77,15 @@ func (ds SqlDatastore) InsertEvent(event *Event) error {
 	return tx.Commit()
 }
 
-func (ds SqlDatastore) ListEvents(limit int, offset int) ([]*Event, error) {
-	stmt, err := ds.handle.Prepare("SELECT insertion_time, creation_time, device_id, payload FROM events ORDER BY insertion_time DESC LIMIT ? OFFSET ?")
+func (ds SqlDatastore) ListEvents(limit int64, offset int64) ([]*Event, error) {
+	stmt, err := ds.handle.Prepare("SELECT id, insertion_time, creation_time, device_id, payload FROM events WHERE id >= ? ORDER BY id ASC LIMIT ?")
 	if err != nil {
 		log.Print("Preparing query:", err)
 		return nil, err
 	}
 	defer stmt.Close()
 
-	rows, err := stmt.Query(limit, offset)
+	rows, err := stmt.Query(offset, limit)
 	if err != nil {
 		log.Print("Executing query:", err)
 		return nil, err
@@ -93,26 +93,39 @@ func (ds SqlDatastore) ListEvents(limit int, offset int) ([]*Event, error) {
 
 	var events []*Event
 	for rows.Next() {
+		var id int64
 		var insertionTime int64
 		var creationTime int64
 		var deviceId string
 		var payload string
 
-		err = rows.Scan(&insertionTime, &creationTime, &deviceId, &payload)
+		err = rows.Scan(&id, &insertionTime, &creationTime, &deviceId, &payload)
 		if err != nil {
 			log.Print("Scan row:", err)
 			return nil, err
 		}
 
-		events = append(events, NewEvent(insertionTime, creationTime, deviceId, payload))
+		events = append(events, NewEvent(id, insertionTime, creationTime, deviceId, payload))
 	}
 
 	return events, nil
 }
 
-func (ds SqlDatastore) NumEvents() (int, error) {
-	var count int
+func (ds SqlDatastore) NumEvents() (int64, error) {
+	var count int64
 	row := ds.handle.QueryRow("SELECT COUNT(id) FROM events")
 	err := row.Scan(&count)
+	return count, err
+}
+
+func (ds SqlDatastore) LastEventId() (int64, error) {
+	var count int64
+	row := ds.handle.QueryRow("SELECT MAX(id) FROM events")
+	log.Print("Done query")
+	err := row.Scan(&count)
+	if err != nil {
+		return 0, nil
+	}
+	log.Print("Done scan")
 	return count, err
 }

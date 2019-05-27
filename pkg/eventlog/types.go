@@ -6,20 +6,21 @@ package eventlog
 
 import (
 	"github.com/lulf/teig-event-store/pkg/datastore"
-	"qpid.apache.org/amqp"
 	"sync"
 )
 
 type Subscriber struct {
-	id       string
-	replay   int
-	outgoing chan *amqp.Message
+	id     string
+	lock   *sync.Mutex
+	cond   *sync.Cond
+	offset int64
+	el     *EventLog
 }
 
 type EventLog struct {
-	lock           *sync.Mutex
 	ds             datastore.Datastore
-	idCounter      uint64
+	idCounter      int64
+	lastCommitted  int64
 	incomingEvents chan *datastore.Event
 	incomingSubs   chan *Subscriber
 	subs           []*Subscriber
