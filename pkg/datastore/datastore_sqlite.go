@@ -121,11 +121,9 @@ func (ds SqlDatastore) NumEvents() (int64, error) {
 func (ds SqlDatastore) LastEventId() (int64, error) {
 	var count int64
 	row := ds.handle.QueryRow("SELECT MAX(id) FROM events")
-	log.Print("Done query")
 	err := row.Scan(&count)
-	if err != nil {
+	if err == sql.ErrNoRows {
 		return 0, nil
 	}
-	log.Print("Done scan")
 	return count, err
 }
