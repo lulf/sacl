@@ -75,69 +75,99 @@ func main() {
 }
 
 func connection(conn electron.Connection, el *eventlog.EventLog) {
-	for in := range conn.Incoming() {
-		switch in := in.(type) {
-		case *electron.IncomingSender:
-			snd := in.Accept().(electron.Sender)
-			// TODO: Read offset from properties
-			sub := el.NewSubscriber(snd.LinkName(), -1)
-			el.AddSubscriber(sub)
-			go sender(snd, sub)
+	done := conn.Done()
+	subs := make([]*eventlog.Subscriber, 0)
+	for {
+		select {
+		case <-done:
+			log.Print("Closing connection: ", conn.String())
+			for _, sub := range subs {
+				sub.Close()
+			}
+			conn.Close(nil)
+			return
+		case in := <-conn.Incoming():
+			switch in := in.(type) {
+			case *electron.IncomingSender:
+				snd := in.Accept().(electron.Sender)
+				// TODO: Read offset from properties
+				sub := el.NewSubscriber(conn.Container().Id()+"-"+snd.LinkName(), -1)
+				subs = append(subs, sub)
+				go sender(snd, sub)
 
-		case *electron.IncomingReceiver:
-			in.SetPrefetch(true)
-			in.SetCapacity(10) // TODO: Adjust based on backlog
-			rcv := in.Accept().(electron.Receiver)
-			go receiver(rcv, el)
-		default:
-			in.Accept()
+			case *electron.IncomingReceiver:
+				in.SetPrefetch(true)
+				in.SetCapacity(10) // TODO: Adjust based on backlog
+				rcv := in.Accept().(electron.Receiver)
+				go receiver(rcv, el)
+			default:
+				in.Accept()
+			}
 		}
 	}
 }
 
 func sender(snd electron.Sender, sub *eventlog.Subscriber) {
+	done := snd.Done()
 	for {
-		events, err := sub.Poll()
-		if err != nil {
-			log.Print("Error polling events for sub", err)
-			// TODO: Close sub
-			continue
-		}
-		for _, event := range events {
-			m := amqp.NewMessage()
-			data, err := json.Marshal(event)
+		select {
+		case <-done:
+			log.Print("Closing link: ", snd.String())
+			snd.Close(nil)
+			sub.Close()
+			return
+		default:
+			events, err := sub.Poll()
 			if err != nil {
-				log.Print("Serializing event:", event)
-				continue
+				log.Print("Error polling events for sub", err)
+				snd.Close(nil)
+				sub.Close()
+				return
 			}
-			m.Marshal(data)
-			snd.SendSync(m)
-			sub.Commit(event.Id)
+			for _, event := range events {
+				m := amqp.NewMessage()
+				data, err := json.Marshal(event)
+				if err != nil {
+					log.Print("Serializing event:", event)
+					continue
+				}
+				m.Marshal(data)
+				snd.SendSync(m)
+				sub.Commit(event.Id)
+			}
 		}
 	}
 }
 
 func receiver(rcv electron.Receiver, el *eventlog.EventLog) {
+	done := rcv.Done()
 	for {
-		if rm, err := rcv.Receive(); err == nil {
-			m := rm.Message
-			var event datastore.Event
-			body := m.Body()
-			var bodyBytes []byte
-			switch t := body.(type) {
-			case amqp.Binary:
-				bodyBytes = []byte(body.(amqp.Binary).String())
-			default:
-				log.Print("Unsupported type:", t)
-			}
-			err := json.Unmarshal(bodyBytes, &event)
-			if err != nil {
-				rm.Reject()
-			} else {
-				el.AddEvent(&event)
-				rm.Accept()
+		select {
+		case <-done:
+			log.Print("Closing link: ", rcv.String())
+			rcv.Close(nil)
+			return
+		default:
+			rm, err := rcv.Receive()
+			if err == nil {
+				m := rm.Message
+				var event datastore.Event
+				body := m.Body()
+				var bodyBytes []byte
+				switch t := body.(type) {
+				case amqp.Binary:
+					bodyBytes = []byte(body.(amqp.Binary).String())
+				default:
+					log.Print("Unsupported type:", t)
+				}
+				err := json.Unmarshal(bodyBytes, &event)
+				if err != nil {
+					rm.Reject()
+				} else {
+					el.AddEvent(&event)
+					rm.Accept()
+				}
 			}
 		}
 	}
-
 }

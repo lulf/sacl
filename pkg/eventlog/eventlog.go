@@ -25,18 +25,15 @@ func NewEventLog(ds datastore.Datastore) (*EventLog, error) {
 	if err != nil {
 		return nil, err
 	}
+	subLock := &sync.Mutex{}
 	return &EventLog{
 		ds:             ds,
 		lastCommitted:  lastId,
 		idCounter:      lastId,
 		incomingEvents: make(chan *datastore.Event, 100),
-		incomingSubs:   make(chan *Subscriber, 100),
-		subs:           make([]*Subscriber, 0),
+		subs:           make(map[string]*Subscriber),
+		subLock:        subLock,
 	}, nil
-}
-
-func (el *EventLog) AddSubscriber(sub *Subscriber) {
-	el.incomingSubs <- sub
 }
 
 func (el *EventLog) AddEvent(event *datastore.Event) {
@@ -45,21 +42,17 @@ func (el *EventLog) AddEvent(event *datastore.Event) {
 
 func (el *EventLog) Run() {
 	for {
-		select {
-		case e := <-el.incomingEvents:
-			e.InsertTime = time.Now().UTC().Unix()
-			e.Id = atomic.AddInt64(&el.idCounter, 1)
-			err := el.ds.InsertEvent(e)
-			if err != nil {
-				log.Print("Inserting event:", err)
-				continue
-			}
-			atomic.StoreInt64(&el.lastCommitted, e.Id)
-			for _, sub := range el.subs {
-				sub.cond.Signal()
-			}
-		case sub := <-el.incomingSubs:
-			el.subs = append(el.subs, sub)
+		e := <-el.incomingEvents
+		e.InsertTime = time.Now().UTC().Unix()
+		e.Id = atomic.AddInt64(&el.idCounter, 1)
+		err := el.ds.InsertEvent(e)
+		if err != nil {
+			log.Print("Inserting event:", err)
+			continue
+		}
+		atomic.StoreInt64(&el.lastCommitted, e.Id)
+		for _, sub := range el.subs {
+			sub.cond.Signal()
 		}
 	}
 }
@@ -70,13 +63,18 @@ func (el *EventLog) NewSubscriber(id string, offset int64) *Subscriber {
 	if offset == -1 {
 		offset = atomic.LoadInt64(&el.lastCommitted) - 10
 	}
-	return &Subscriber{
+	sub := &Subscriber{
 		id:     id,
 		lock:   lock,
 		cond:   cond,
 		offset: offset,
 		el:     el,
 	}
+
+	el.subLock.Lock()
+	el.subs[sub.id] = sub
+	el.subLock.Unlock()
+	return sub
 }
 
 func (s *Subscriber) Poll() ([]*datastore.Event, error) {
@@ -97,4 +95,10 @@ func (s *Subscriber) Poll() ([]*datastore.Event, error) {
 
 func (s *Subscriber) Commit(offset int64) {
 	s.offset = offset
+}
+
+func (s *Subscriber) Close() {
+	s.el.subLock.Lock()
+	delete(s.el.subs, s.id)
+	s.el.subLock.Unlock()
 }

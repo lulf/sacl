@@ -22,6 +22,6 @@ type EventLog struct {
 	idCounter      int64
 	lastCommitted  int64
 	incomingEvents chan *datastore.Event
-	incomingSubs   chan *Subscriber
-	subs           []*Subscriber
+	subs           map[string]*Subscriber
+	subLock        *sync.Mutex
 }
