@@ -92,7 +92,11 @@ func (es *EventServer) sender(snd electron.Sender, sub *eventlog.Subscriber) {
 					continue
 				}
 				m.Marshal(data)
-				snd.SendSync(m)
+				outcome := snd.SendSync(m)
+				if outcome.Status == electron.Unsent || outcome.Status == electron.Unacknowledged {
+					log.Print("Error sending message:", outcome.Error)
+					continue
+				}
 				sub.Commit(event.Id)
 			}
 		}
