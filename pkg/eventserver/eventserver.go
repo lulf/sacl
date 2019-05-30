@@ -7,7 +7,7 @@ package eventserver
 
 import (
 	"encoding/json"
-	"github.com/lulf/teig-event-store/pkg/datastore"
+	"github.com/lulf/teig-event-store/pkg/api"
 	"github.com/lulf/teig-event-store/pkg/eventlog"
 	"log"
 	"net"
@@ -115,7 +115,7 @@ func (es *EventServer) receiver(rcv electron.Receiver) {
 			rm, err := rcv.Receive()
 			if err == nil {
 				m := rm.Message
-				var event datastore.Event
+				var event api.Event
 				body := m.Body()
 				var bodyBytes []byte
 				switch t := body.(type) {

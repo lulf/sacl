@@ -5,6 +5,7 @@
 package eventlog
 
 import (
+	"github.com/lulf/teig-event-store/pkg/api"
 	"github.com/lulf/teig-event-store/pkg/datastore"
 	"sync"
 )
@@ -21,7 +22,7 @@ type EventLog struct {
 	ds             datastore.Datastore
 	idCounter      int64
 	lastCommitted  int64
-	incomingEvents chan *datastore.Event
+	incomingEvents chan *api.Event
 	subs           map[string]*Subscriber
 	subLock        *sync.Mutex
 }

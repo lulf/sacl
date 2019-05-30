@@ -6,8 +6,10 @@ package datastore
 
 import (
 	"database/sql"
+	"github.com/lulf/teig-event-store/pkg/api"
 	_ "github.com/mattn/go-sqlite3"
 	"log"
+	"time"
 )
 
 func (ds SqlDatastore) Close() {
@@ -41,12 +43,14 @@ func (ds SqlDatastore) Initialize() error {
 	return nil
 }
 
-func (ds SqlDatastore) InsertEvent(event *Event) error {
+func (ds SqlDatastore) InsertEvent(event *api.Event) error {
 	tx, err := ds.handle.Begin()
 	if err != nil {
 		log.Print("Starting transaction:", err)
 		return err
 	}
+
+	insertionTime := time.Now().UTC().Unix()
 
 	insertStmt, err := tx.Prepare("INSERT INTO events(id, insertion_time, creation_time, device_id, payload) values(?, ?, ?, ?, ?)")
 	if err != nil {
@@ -62,7 +66,7 @@ func (ds SqlDatastore) InsertEvent(event *Event) error {
 	}
 	defer removeStmt.Close()
 
-	_, err = insertStmt.Exec(event.Id, event.InsertTime, event.CreationTime, event.DeviceId, event.Payload)
+	_, err = insertStmt.Exec(event.Id, insertionTime, event.CreationTime, event.DeviceId, event.Payload)
 	if err != nil {
 		log.Print("Inserting entry:", err)
 		return err
@@ -77,8 +81,8 @@ func (ds SqlDatastore) InsertEvent(event *Event) error {
 	return tx.Commit()
 }
 
-func (ds SqlDatastore) ListEvents(limit int64, offset int64) ([]*Event, error) {
-	stmt, err := ds.handle.Prepare("SELECT id, insertion_time, creation_time, device_id, payload FROM events WHERE id > ? ORDER BY id ASC LIMIT ?")
+func (ds SqlDatastore) ListEvents(limit int64, offset int64) ([]*api.Event, error) {
+	stmt, err := ds.handle.Prepare("SELECT id, creation_time, device_id, payload FROM events WHERE id > ? ORDER BY id ASC LIMIT ?")
 	if err != nil {
 		log.Print("Preparing query:", err)
 		return nil, err
@@ -91,21 +95,20 @@ func (ds SqlDatastore) ListEvents(limit int64, offset int64) ([]*Event, error) {
 		return nil, err
 	}
 
-	var events []*Event
+	var events []*api.Event
 	for rows.Next() {
 		var id int64
-		var insertionTime int64
 		var creationTime int64
 		var deviceId string
 		var payload string
 
-		err = rows.Scan(&id, &insertionTime, &creationTime, &deviceId, &payload)
+		err = rows.Scan(&id, &creationTime, &deviceId, &payload)
 		if err != nil {
 			log.Print("Scan row:", err)
 			return nil, err
 		}
 
-		events = append(events, NewEvent(id, insertionTime, creationTime, deviceId, payload))
+		events = append(events, api.NewEvent(id, creationTime, deviceId, payload))
 	}
 
 	return events, nil

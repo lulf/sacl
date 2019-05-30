@@ -6,11 +6,11 @@
 package eventlog
 
 import (
+	"github.com/lulf/teig-event-store/pkg/api"
 	"github.com/lulf/teig-event-store/pkg/datastore"
 	"log"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 func max(a, b int) int {
@@ -30,20 +30,19 @@ func NewEventLog(ds datastore.Datastore) (*EventLog, error) {
 		ds:             ds,
 		lastCommitted:  lastId,
 		idCounter:      lastId,
-		incomingEvents: make(chan *datastore.Event, 100),
+		incomingEvents: make(chan *api.Event, 100),
 		subs:           make(map[string]*Subscriber),
 		subLock:        subLock,
 	}, nil
 }
 
-func (el *EventLog) AddEvent(event *datastore.Event) {
+func (el *EventLog) AddEvent(event *api.Event) {
 	el.incomingEvents <- event
 }
 
 func (el *EventLog) Run() {
 	for {
 		e := <-el.incomingEvents
-		e.InsertTime = time.Now().UTC().Unix()
 		e.Id = atomic.AddInt64(&el.idCounter, 1)
 		err := el.ds.InsertEvent(e)
 		if err != nil {
@@ -77,7 +76,7 @@ func (el *EventLog) NewSubscriber(id string, offset int64) *Subscriber {
 	return sub
 }
 
-func (s *Subscriber) Poll() ([]*datastore.Event, error) {
+func (s *Subscriber) Poll() ([]*api.Event, error) {
 	el := s.el
 	var lastCommitted int64
 	s.lock.Lock()
