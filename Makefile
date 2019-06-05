@@ -6,6 +6,7 @@ container_build: build
 build: builddir
 	#CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o build/event-store cmd/event-store/main.go
 	GOOS=linux GOARCH=amd64 go build -o build/event-store cmd/event-store/main.go
+	GOOS=linux GOARCH=amd64 go build -o build/event-generator cmd/event-generator/main.go
 
 test:
 	go test -v ./...
