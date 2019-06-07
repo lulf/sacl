@@ -50,8 +50,8 @@ func main() {
 		if err != nil {
 			log.Fatal("Sender:", s)
 		}
-		maxWait := 10 + rand.Intn(30)
-		go runSender(device, s, maxWait)
+		wait := 2 + rand.Intn(5)
+		go runSender(device, s, wait)
 	}
 
 	for {
@@ -59,20 +59,20 @@ func main() {
 	}
 }
 
-func runSender(device string, sender electron.Sender, maxWait int) {
-	log.Print("Running:", device)
+func runSender(device string, sender electron.Sender, wait int) {
+	log.Print(fmt.Sprintf("Running %s with interval %d", device, wait))
 	step := 0.1
 	startValue := rand.Float64() * math.Pi
 	value := startValue
 	maxValue := 2.0 * math.Pi
 	for {
-		waitNextEvent(maxWait)
+		time.Sleep(time.Duration(wait) * time.Second)
 		now := time.Now().UTC().Unix()
 		if value > maxValue {
 			value = 0.0
 		}
 
-		payload := fmt.Sprintf("%f", 15.0+(20.0*math.Sin(value)))
+		payload := fmt.Sprintf("%f", 15.0+(10.0*math.Sin(value)))
 		value += step
 		event := api.NewEvent(0, now, device, payload)
 		m := amqp.NewMessage()
@@ -89,9 +89,4 @@ func runSender(device string, sender electron.Sender, maxWait int) {
 			continue
 		}
 	}
-}
-
-func waitNextEvent(maxWait int) {
-	w := (2 + rand.Intn(maxWait))
-	time.Sleep(time.Duration(w) * time.Second)
 }
