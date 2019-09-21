@@ -19,111 +19,111 @@ func tempDbFile(t *testing.T, prefix string) string {
 	return f.Name()
 }
 
-func TestInitialize(t *testing.T) {
+func TestCreateTopic(t *testing.T) {
 	f := tempDbFile(t, "init")
-	ds, err := NewSqliteDatastore(f, 2)
+	ds, err := NewSqliteDatastore(f, 0, 0)
 	defer ds.Close()
 	assert.Nil(t, err)
 	assert.NotNil(t, ds)
 
-	_, err = ds.handle.Exec("SELECT events FROM sqlite_master WHERE type='table'")
+	_, err = ds.handle.Exec("SELECT mytopic FROM sqlite_master WHERE type='table'")
 	assert.NotNil(t, err)
 
-	err = ds.Initialize()
+	_, err = ds.CreateTopic("mytopic")
 	assert.Nil(t, err)
 
-	_, err = ds.handle.Exec("SELECT events FROM sqlite_master WHERE type='table'")
+	_, err = ds.handle.Exec("SELECT mytopic FROM sqlite_master WHERE type='table'")
 	assert.NotNil(t, err)
 }
 
-func TestInsertEvent(t *testing.T) {
+func TestInsertMessage(t *testing.T) {
 	f := tempDbFile(t, "insert")
-	ds, err := NewSqliteDatastore(f, 2)
+	ds, err := NewSqliteDatastore(f, 3, 0)
 	defer ds.Close()
 	assert.Nil(t, err)
 	assert.NotNil(t, ds)
 
-	err = ds.InsertEvent(api.NewEvent(1, 2, "dev1", "payload1"))
-	assert.NotNil(t, err)
-
-	err = ds.Initialize()
+	_, err = ds.CreateTopic("mytopic")
 	assert.Nil(t, err)
-	err = ds.InsertEvent(api.NewEvent(1, 1, "dev1", "payload1"))
+
+	err = ds.InsertMessage("mytopic", api.NewMessage(1, []byte("payload1")))
 	assert.Nil(t, err)
 
 	count, err := countEntries(t, ds)
 	assert.Nil(t, err)
 	assert.Equal(t, 1, count)
 
-	err = ds.InsertEvent(api.NewEvent(2, 2, "dev2", "payload2"))
+	err = ds.InsertMessage("mytopic", api.NewMessage(2, []byte("payload2")))
 	assert.Nil(t, err)
 	count, err = countEntries(t, ds)
 	assert.Nil(t, err)
 	assert.Equal(t, 2, count)
 
-	err = ds.InsertEvent(api.NewEvent(3, 3, "dev2", "payload3"))
+	err = ds.InsertMessage("mytopic", api.NewMessage(3, []byte("payload3")))
 	assert.Nil(t, err)
 	count, err = countEntries(t, ds)
 	assert.Nil(t, err)
 	assert.Equal(t, 3, count)
 
-	err = ds.InsertEvent(api.NewEvent(4, 4, "dev2", "payload4"))
+	err = ds.InsertMessage("mytopic", api.NewMessage(4, []byte("payload4")))
 	assert.Nil(t, err)
 	count, err = countEntries(t, ds)
 	assert.Nil(t, err)
-	assert.Equal(t, 3, count)
+	assert.Equal(t, 4, count)
 }
 
-func TestListEvents(t *testing.T) {
+func TestListMessages(t *testing.T) {
 	f := tempDbFile(t, "listevents")
-	ds, err := NewSqliteDatastore(f, 6)
+	ds, err := NewSqliteDatastore(f, 6, 0)
 	defer ds.Close()
 	assert.NotNil(t, ds)
 
-	ds.Initialize()
-	ds.InsertEvent(api.NewEvent(1, 1, "dev1", "payload1"))
-	ds.InsertEvent(api.NewEvent(2, 2, "dev1", "payload2"))
-	ds.InsertEvent(api.NewEvent(3, 3, "dev1", "payload3"))
-	ds.InsertEvent(api.NewEvent(4, 4, "dev1", "payload4"))
+	ds.CreateTopic("mytopic")
+	ds.InsertMessage("mytopic", api.NewMessage(1, []byte("payload1")))
+	ds.InsertMessage("mytopic", api.NewMessage(2, []byte("payload2")))
+	ds.InsertMessage("mytopic", api.NewMessage(3, []byte("payload3")))
+	ds.InsertMessage("mytopic", api.NewMessage(4, []byte("payload4")))
 
-	lst, err := ds.ListEvents(-1, 0)
+	lst, err := ds.ListMessages("mytopic", -1, 0)
 	assert.Nil(t, err)
 	assert.Equal(t, 4, len(lst))
 
-	lst, err = ds.ListEvents(-1, 2)
+	lst, err = ds.ListMessages("mytopic", -1, 2)
 	assert.Nil(t, err)
 	assert.Equal(t, 2, len(lst))
 
-	lst, err = ds.ListEvents(1, 2)
+	lst, err = ds.ListMessages("mytopic", 1, 2)
 	assert.Nil(t, err)
 	assert.Equal(t, 1, len(lst))
 }
 
-func TestNumEvents(t *testing.T) {
+func TestNumMessages(t *testing.T) {
 	f := tempDbFile(t, "numevents")
-	ds, err := NewSqliteDatastore(f, 6)
+	ds, err := NewSqliteDatastore(f, 6, 0)
 	defer ds.Close()
 	assert.NotNil(t, ds)
 
-	ds.Initialize()
-	count, err := ds.NumEvents()
+	ds.CreateTopic("mytopic")
+	count, err := ds.NumMessages("mytopic")
 	assert.Nil(t, err)
 	assert.Equal(t, 0, int(count))
-	ds.InsertEvent(api.NewEvent(1, 1, "dev1", "payload1"))
-	count, err = ds.NumEvents()
+	ds.InsertMessage("mytopic", api.NewMessage(1, []byte("payload1")))
+	count, err = ds.NumMessages("mytopic")
 	assert.Equal(t, 1, int(count))
-	ds.InsertEvent(api.NewEvent(2, 2, "dev1", "payload2"))
-	ds.InsertEvent(api.NewEvent(3, 3, "dev1", "payload3"))
-	count, err = ds.NumEvents()
+	ds.InsertMessage("mytopic", api.NewMessage(2, []byte("payload2")))
+	ds.InsertMessage("mytopic", api.NewMessage(3, []byte("payload3")))
+	count, err = ds.NumMessages("mytopic")
 	assert.Equal(t, 3, int(count))
-	ds.InsertEvent(api.NewEvent(4, 4, "dev1", "payload4"))
-	count, err = ds.NumEvents()
+	ds.InsertMessage("mytopic", api.NewMessage(4, []byte("payload4")))
+	count, err = ds.NumMessages("mytopic")
 	assert.Equal(t, 4, int(count))
+	count, err = ds.NumMessages("unknown")
+	assert.Equal(t, 0, int(count))
 }
 
 func countEntries(t *testing.T, ds *SqlDatastore) (int, error) {
 	var count int
-	row := ds.handle.QueryRow("SELECT COUNT(id) FROM events")
+	row := ds.handle.QueryRow("SELECT COUNT(id) FROM mytopic")
 	assert.NotNil(t, row)
 	err := row.Scan(&count)
 	return count, err
