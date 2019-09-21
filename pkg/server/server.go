@@ -61,7 +61,15 @@ func (s *Server) connection(conn electron.Connection) {
 					snd.Close(nil)
 					continue
 				}
-				sub := topic.NewSubscriber(conn.Container().Id()+"-"+snd.LinkName(), -1)
+				filter := snd.Filter()
+				offsetProp, ok := filter["offset"]
+				var offset int64
+				if ok {
+					offset = offsetProp.(int64)
+				} else {
+					offset = -1
+				}
+				sub := topic.NewSubscriber(conn.Container().Id()+"-"+snd.LinkName(), offset)
 				subs = append(subs, sub)
 				go s.sender(snd, sub)
 

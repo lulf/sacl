@@ -10,8 +10,7 @@ The event log can be limited by time or not at all (by size will be added).
 
 Producers send AMQP messages to a topic. The messages are stored immutable in the commit log in the order produced.
 
-Consumers consume events by attaching to a topic starting from the last entry. (Ability to specify offset will be added)
-
+Consumers consume events by attaching to a topic starting from the last entry or by specifying an offset. The offset is specified as a source filter "offset" on the receiver source.
 
 ## Building
 
@@ -32,5 +31,4 @@ sacl-consumer -o 5 -h 127.0.0.1 -p 5672
 
 ## TODO
 
-* Support consumer offset as link property
 * Limit log by size

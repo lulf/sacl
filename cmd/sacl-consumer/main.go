@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"qpid.apache.org/amqp"
 	"qpid.apache.org/electron"
 )
 
@@ -48,7 +49,8 @@ func main() {
 		log.Fatal("NewConnection:", err)
 	}
 
-	sopts := []electron.LinkOption{electron.Source(topic)}
+	props := map[amqp.Symbol]interface{}{"offset": offset}
+	sopts := []electron.LinkOption{electron.Source(topic), electron.Filter(props)}
 	r, err := amqpConn.Receiver(sopts...)
 	if err != nil {
 		log.Fatal("Receiver:", r)
