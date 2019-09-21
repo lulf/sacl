@@ -3,40 +3,42 @@
  * License: Apache License 2.0 (see the file LICENSE or http://apache.org/licenses/LICENSE-2.0.html).
  */
 
-package eventserver
+package server
 
 import (
-	"encoding/json"
 	"github.com/lulf/sacl/pkg/api"
-	"github.com/lulf/sacl/pkg/eventlog"
+	"github.com/lulf/sacl/pkg/commitlog"
 	"log"
 	"net"
 	"qpid.apache.org/amqp"
 	"qpid.apache.org/electron"
 )
 
-func NewEventServer(id string, el *eventlog.EventLog) *EventServer {
+func NewServer(id string, cl *commitlog.CommitLog) *Server {
 	container := electron.NewContainer(id)
-	return &EventServer{
+	return &Server{
 		container: container,
-		el:        el,
+		cl:        cl,
+		codec: &amqp.MessageCodec{
+			Buffer: make([]byte, 1024),
+		},
 	}
 }
 
-func (es *EventServer) Run(listener net.Listener) {
+func (s *Server) Run(listener net.Listener) {
 	for {
-		conn, err := es.container.Accept(listener)
+		conn, err := s.container.Accept(listener)
 		if err != nil {
 			log.Print("Accept error:", err)
 			continue
 		}
-		go es.connection(conn)
+		go s.connection(conn)
 	}
 }
 
-func (es *EventServer) connection(conn electron.Connection) {
+func (s *Server) connection(conn electron.Connection) {
 	done := conn.Done()
-	subs := make([]*eventlog.Subscriber, 0)
+	subs := make([]*commitlog.Subscriber, 0)
 	for {
 		select {
 		case <-done:
@@ -51,15 +53,30 @@ func (es *EventServer) connection(conn electron.Connection) {
 			case *electron.IncomingSender:
 				snd := in.Accept().(electron.Sender)
 				// TODO: Read offset from properties
-				sub := es.el.NewSubscriber(conn.Container().Id()+"-"+snd.LinkName(), -1)
+				topicName := snd.Source()
+				topic, err := s.cl.GetOrNewTopic(topicName)
+				if err != nil {
+					log.Print("Closing link: ", snd.String())
+					snd.Close(nil)
+					continue
+				}
+				sub := topic.NewSubscriber(conn.Container().Id()+"-"+snd.LinkName(), -1)
 				subs = append(subs, sub)
-				go es.sender(snd, sub)
+				go s.sender(snd, sub)
 
 			case *electron.IncomingReceiver:
 				in.SetPrefetch(true)
 				in.SetCapacity(10) // TODO: Adjust based on backlog
 				rcv := in.Accept().(electron.Receiver)
-				go es.receiver(rcv)
+
+				topicName := rcv.Target()
+				topic, err := s.cl.GetOrNewTopic(topicName)
+				if err != nil {
+					log.Print("Closing link: ", rcv.String())
+					rcv.Close(nil)
+					continue
+				}
+				go s.receiver(topic, rcv)
 			default:
 				in.Accept()
 			}
@@ -67,7 +84,7 @@ func (es *EventServer) connection(conn electron.Connection) {
 	}
 }
 
-func (es *EventServer) sender(snd electron.Sender, sub *eventlog.Subscriber) {
+func (s *Server) sender(snd electron.Sender, sub *commitlog.Subscriber) {
 	done := snd.Done()
 	for {
 		select {
@@ -77,33 +94,31 @@ func (es *EventServer) sender(snd electron.Sender, sub *eventlog.Subscriber) {
 			sub.Close()
 			return
 		default:
-			events, err := sub.Poll()
+			messages, err := sub.Poll()
 			if err != nil {
 				log.Print("Error polling events for sub", err)
 				snd.Close(nil)
 				sub.Close()
 				return
 			}
-			for _, event := range events {
-				m := amqp.NewMessage()
-				data, err := json.Marshal(event)
+			for _, msg := range messages {
+				m, err := amqp.DecodeMessage(msg.Payload)
 				if err != nil {
-					log.Print("Serializing event:", event)
+					log.Print("Decoding message:", m)
 					continue
 				}
-				m.Marshal(data)
 				outcome := snd.SendSync(m)
 				if outcome.Status == electron.Unsent || outcome.Status == electron.Unacknowledged {
 					log.Print("Error sending message:", outcome.Error)
 					continue
 				}
-				sub.Commit(event.Id)
+				sub.Commit(msg.Id)
 			}
 		}
 	}
 }
 
-func (es *EventServer) receiver(rcv electron.Receiver) {
+func (s *Server) receiver(topic *commitlog.Topic, rcv electron.Receiver) {
 	done := rcv.Done()
 	for {
 		select {
@@ -115,21 +130,20 @@ func (es *EventServer) receiver(rcv electron.Receiver) {
 			rm, err := rcv.Receive()
 			if err == nil {
 				m := rm.Message
-				var event api.Event
-				body := m.Body()
-				var bodyBytes []byte
-				switch t := body.(type) {
-				case amqp.Binary:
-					bodyBytes = []byte(body.(amqp.Binary).String())
-				default:
-					log.Print("Unsupported type:", t)
-				}
-				err := json.Unmarshal(bodyBytes, &event)
+				data, err := s.codec.Encode(m, make([]byte, 0))
 				if err != nil {
 					rm.Reject()
 				} else {
-					es.el.AddEvent(&event)
-					rm.Accept()
+					message := api.NewMessage(0, data)
+					topic.AddEntry(commitlog.NewEntry(message,
+						func(ok bool) {
+							if ok {
+								rm.Accept()
+							} else {
+								rm.Reject()
+							}
+						},
+					))
 				}
 			}
 		}

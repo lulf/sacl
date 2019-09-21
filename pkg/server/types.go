@@ -3,14 +3,16 @@
  * License: Apache License 2.0 (see the file LICENSE or http://apache.org/licenses/LICENSE-2.0.html).
  */
 
-package eventserver
+package server
 
 import (
-	"github.com/lulf/sacl/pkg/eventlog"
+	"github.com/lulf/sacl/pkg/commitlog"
+	"qpid.apache.org/amqp"
 	"qpid.apache.org/electron"
 )
 
-type EventServer struct {
+type Server struct {
 	container electron.Container
-	el        *eventlog.EventLog
+	cl        *commitlog.CommitLog
+	codec     *amqp.MessageCodec
 }

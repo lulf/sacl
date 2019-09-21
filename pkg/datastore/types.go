@@ -10,17 +10,20 @@ import (
 )
 
 type Datastore interface {
-	Initialize() error
-	InsertEvent(event *api.Event) error
-	// List events starting from a given offset.  Offset = 0 starts at the oldest entry.
-	ListEvents(limit int64, offset int64) ([]*api.Event, error)
+	CreateTopic(topic string) (int64, error)
+	InsertMessage(topic string, message *api.Message) error
+	// List messages starting from a given offset.  Offset = 0 starts at the oldest entry.
+	ListMessages(topic string, limit int64, offset int64) ([]*api.Message, error)
 	// Read the number of events stored
-	NumEvents() (int64, error)
-	LastEventId() (int64, error)
+	NumMessages(topic string) (int64, error)
+	LastMessageId(topic string) (int64, error)
+	GarbageCollect(topic string) error
+	ListTopics() ([]string, error)
 	Close()
 }
 
 type SqlDatastore struct {
-	handle  *sql.DB
-	maxSize int
+	handle     *sql.DB
+	maxLogSize int64
+	maxLogAge  int64
 }

@@ -7,9 +7,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/lulf/sacl/pkg/commitlog"
 	"github.com/lulf/sacl/pkg/datastore"
-	"github.com/lulf/sacl/pkg/eventlog"
-	"github.com/lulf/sacl/pkg/eventserver"
+	"github.com/lulf/sacl/pkg/server"
 	"log"
 	"net"
 	"os"
@@ -17,15 +17,15 @@ import (
 
 func main() {
 	var dbfile string
-	var maxlogsize int
-	var defaultReplayCount int
+	var maxlogage int64
+	var maxlogsize int64
 	var listenAddr string
 	var listenPort int
 
 	flag.StringVar(&dbfile, "d", "store.db", "Path to database file (default: store.db)")
-	flag.IntVar(&maxlogsize, "m", 100, "Max number of entries in log (default: 100)")
-	flag.IntVar(&defaultReplayCount, "c", 10, "Default number of events to replay for new subscribers (default: 10)")
-	flag.StringVar(&listenAddr, "l", "127.0.0.1", "Address of AMQP event source (default: 127.0.0.1)")
+	flag.Int64Var(&maxlogsize, "m", -1, "Max number of bytes in log (default: unlimited)")
+	flag.Int64Var(&maxlogage, "a", -1, "Max age in seconds of log entries (default: unlimited)")
+	flag.StringVar(&listenAddr, "l", "127.0.0.1", "Interface address to listen on (default: 127.0.0.1)")
 	flag.IntVar(&listenPort, "p", 5672, "Port to listen on (default: 5672)")
 
 	flag.Usage = func() {
@@ -35,24 +35,18 @@ func main() {
 	}
 	flag.Parse()
 
-	ds, err := datastore.NewSqliteDatastore(dbfile, maxlogsize)
+	ds, err := datastore.NewSqliteDatastore(dbfile, maxlogage, maxlogsize)
 	if err != nil {
 		log.Fatal("Opening Datastore:", err)
 	}
 	defer ds.Close()
 
-	err = ds.Initialize()
+	cl, err := commitlog.NewCommitLog(ds)
 	if err != nil {
-		log.Fatal("Initializing Datastore:", err)
+		log.Fatal("Creating commit log:", err)
 	}
 
-	el, err := eventlog.NewEventLog(ds)
-	if err != nil {
-		log.Fatal("Creating eventlog:", err)
-	}
-	go el.Run()
-
-	es := eventserver.NewEventServer("sacl", el)
+	es := server.NewServer("sacl-server", cl)
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", listenAddr, listenPort))
 	if err != nil {

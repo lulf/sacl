@@ -6,6 +6,7 @@ package datastore
 
 import (
 	"database/sql"
+	"fmt"
 	"github.com/lulf/sacl/pkg/api"
 	_ "github.com/mattn/go-sqlite3"
 	"log"
@@ -16,7 +17,7 @@ func (ds SqlDatastore) Close() {
 	ds.handle.Close()
 }
 
-func NewSqliteDatastore(fileName string, maxSize int) (*SqlDatastore, error) {
+func NewSqliteDatastore(fileName string, maxLogSize int64, maxLogAge int64) (*SqlDatastore, error) {
 	db, err := sql.Open("sqlite3", fileName)
 	if err != nil {
 		log.Print("Opening Database:", err)
@@ -24,26 +25,25 @@ func NewSqliteDatastore(fileName string, maxSize int) (*SqlDatastore, error) {
 	}
 
 	return &SqlDatastore{
-		handle:  db,
-		maxSize: maxSize,
+		handle:     db,
+		maxLogSize: maxLogSize,
+		maxLogAge:  maxLogAge,
 	}, nil
 }
 
-func (ds SqlDatastore) Initialize() error {
+func (ds SqlDatastore) CreateTopic(topic string) (int64, error) {
 	// Create initial database table
-	tableCreate := `
-	create table if not exists events (id integer not null primary key, insertion_time integer, creation_time integer, device_id integer, payload text);
-        `
+	tableCreate := fmt.Sprintf("create table if not exists %s (id integer not null primary key, insertion_time integer, payload text);", topic)
 
 	_, err := ds.handle.Exec(tableCreate)
 	if err != nil {
-		log.Print("Creating Database Tables:", err)
-		return err
+		log.Print("Creating topic:", topic, err)
+		return 0, err
 	}
-	return nil
+	return 0, nil
 }
 
-func (ds SqlDatastore) InsertEvent(event *api.Event) error {
+func (ds SqlDatastore) InsertMessage(topic string, message *api.Message) error {
 	tx, err := ds.handle.Begin()
 	if err != nil {
 		log.Print("Starting transaction:", err)
@@ -52,78 +52,136 @@ func (ds SqlDatastore) InsertEvent(event *api.Event) error {
 
 	insertionTime := time.Now().UTC().Unix()
 
-	insertStmt, err := tx.Prepare("INSERT INTO events(id, insertion_time, creation_time, device_id, payload) values(?, ?, ?, ?, ?)")
+	insertStmt, err := tx.Prepare("INSERT INTO ? (id, insertion_time, payload) values(?, ?, ?)")
 	if err != nil {
 		log.Print("Preparing insert statement:", err)
 		return err
 	}
 	defer insertStmt.Close()
 
-	removeStmt, err := tx.Prepare("DELETE FROM events WHERE device_id=? AND id NOT IN (SELECT id FROM events WHERE device_id=? ORDER BY id DESC LIMIT ?)")
-	if err != nil {
-		log.Print("Preparing remove statement:", err)
-		return err
-	}
-	defer removeStmt.Close()
-
-	_, err = insertStmt.Exec(event.Id, insertionTime, event.CreationTime, event.DeviceId, event.Payload)
+	_, err = insertStmt.Exec(topic, message.Id, insertionTime, message.Payload)
 	if err != nil {
 		log.Print("Inserting entry:", err)
-		return err
-	}
-
-	_, err = removeStmt.Exec(event.DeviceId, event.DeviceId, ds.maxSize)
-	if err != nil {
-		log.Print("Removing oldest entry:", err)
 		return err
 	}
 
 	return tx.Commit()
 }
 
-func (ds SqlDatastore) ListEvents(limit int64, offset int64) ([]*api.Event, error) {
-	stmt, err := ds.handle.Prepare("SELECT id, creation_time, device_id, payload FROM events WHERE id > ? ORDER BY id ASC LIMIT ?")
+func (ds SqlDatastore) GarbageCollect(topic string) error {
+	tx, err := ds.handle.Begin()
+	if err != nil {
+		log.Print("Starting transaction:", err)
+		return err
+	}
+
+	if ds.maxLogSize > 0 {
+		/*
+			removeStmt, err := tx.Prepare(fmt.Sprintf("DELETE FROM %s WHERE id NOT IN (SELECT id FROM %s ORDER BY id DESC LIMIT ?)")
+			if err != nil {
+				log.Print("Preparing remove statement:", err)
+				return err
+			}
+			defer removeStmt.Close()*/
+
+		/*
+			_, err = removeStmt.Exec()
+			if err != nil {
+				log.Print("Removing oldest entry:", err)
+				return err
+			}
+		*/
+	}
+
+	var removeByAge *sql.Stmt
+	if ds.maxLogAge > 0 {
+		now := time.Now().UTC().Unix()
+		oldest := now - ds.maxLogAge
+		removeByAge, err = tx.Prepare("DELETE FROM ? WHERE insertion_time < ?")
+		if err != nil {
+			log.Print("Preparing remove statement:", err)
+			return err
+		}
+		defer removeByAge.Close()
+		_, err = removeByAge.Exec(topic, oldest)
+		if err != nil {
+			log.Print("Removing oldest entry:", err)
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (ds SqlDatastore) ListMessages(topic string, limit int64, offset int64) ([]*api.Message, error) {
+	stmt, err := ds.handle.Prepare("SELECT id, payload FROM ? WHERE id > ? ORDER BY id ASC LIMIT ?")
 	if err != nil {
 		log.Print("Preparing query:", err)
 		return nil, err
 	}
 	defer stmt.Close()
 
-	rows, err := stmt.Query(offset, limit)
+	rows, err := stmt.Query(topic, offset, limit)
 	if err != nil {
 		log.Print("Executing query:", err)
 		return nil, err
 	}
 
-	var events []*api.Event
+	var messages []*api.Message
 	for rows.Next() {
 		var id int64
-		var creationTime int64
-		var deviceId string
-		var payload string
+		var payload []byte
 
-		err = rows.Scan(&id, &creationTime, &deviceId, &payload)
+		err = rows.Scan(&id, &payload)
 		if err != nil {
 			log.Print("Scan row:", err)
 			return nil, err
 		}
 
-		events = append(events, api.NewEvent(id, creationTime, deviceId, payload))
+		messages = append(messages, api.NewMessage(id, payload))
 	}
 
-	return events, nil
+	return messages, nil
 }
 
-func (ds SqlDatastore) NumEvents() (int64, error) {
+func (ds SqlDatastore) NumMessages(topic string) (int64, error) {
 	var count int64
-	row := ds.handle.QueryRow("SELECT COUNT(id) FROM events")
+	row := ds.handle.QueryRow(fmt.Sprintf("SELECT COUNT(id) FROM %s", topic))
 	err := row.Scan(&count)
 	return count, err
 }
 
-func (ds SqlDatastore) LastEventId() (int64, error) {
+func (ds SqlDatastore) LastMessageId(topic string) (int64, error) {
 	var count sql.NullInt64
-	row := ds.handle.QueryRow("SELECT MAX(id) FROM events")
+	row := ds.handle.QueryRow(fmt.Sprintf("SELECT MAX(id) FROM %s"))
 	err := row.Scan(&count)
 	return count.Int64, err
+}
+
+func (ds SqlDatastore) ListTopics() ([]string, error) {
+	stmt, err := ds.handle.Prepare("SELECT name FROM sqlite_master")
+	if err != nil {
+		log.Print("Preparing query:", err)
+		return nil, err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		log.Print("Executing query:", err)
+		return nil, err
+	}
+
+	var topics []string = make([]string, 0)
+	for rows.Next() {
+		var name string
+		err = rows.Scan(&name)
+		if err != nil {
+			log.Print("Scan row:", err)
+			return nil, err
+		}
+
+		topics = append(topics, name)
+	}
+
+	return topics, nil
 }
