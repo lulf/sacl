@@ -12,6 +12,7 @@ Producers send AMQP messages to a topic. The messages are stored immutable in th
 
 Consumers consume events by attaching to a topic starting from the last entry. (Ability to specify offset will be added)
 
+
 ## Building
 
 SACL uses the Apache Qpid Proton Go bindings, which is a wrapper around a C library. To compile SACL, you must install the [Apache Qpid Proton](https://qpid.apache.org/proton/index.html) library.
