@@ -5,8 +5,8 @@
 package eventlog
 
 import (
-	"github.com/lulf/teig-event-store/pkg/api"
-	"github.com/lulf/teig-event-store/pkg/datastore"
+	"github.com/lulf/sacl/pkg/api"
+	"github.com/lulf/sacl/pkg/datastore"
 	"sync"
 )
 

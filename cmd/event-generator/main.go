@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/lulf/teig-event-store/pkg/api"
+	"github.com/lulf/sacl/pkg/api"
 	"log"
 	"math"
 	"math/rand"

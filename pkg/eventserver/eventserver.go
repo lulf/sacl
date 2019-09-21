@@ -7,8 +7,8 @@ package eventserver
 
 import (
 	"encoding/json"
-	"github.com/lulf/teig-event-store/pkg/api"
-	"github.com/lulf/teig-event-store/pkg/eventlog"
+	"github.com/lulf/sacl/pkg/api"
+	"github.com/lulf/sacl/pkg/eventlog"
 	"log"
 	"net"
 	"qpid.apache.org/amqp"

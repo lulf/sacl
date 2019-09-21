@@ -6,7 +6,7 @@
 package eventserver
 
 import (
-	"github.com/lulf/teig-event-store/pkg/eventlog"
+	"github.com/lulf/sacl/pkg/eventlog"
 	"qpid.apache.org/electron"
 )
 

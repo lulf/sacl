@@ -1,4 +1,4 @@
-module github.com/lulf/teig-event-store
+module github.com/lulf/sacl
 
 go 1.12
 

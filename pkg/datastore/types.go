@@ -6,7 +6,7 @@ package datastore
 
 import (
 	"database/sql"
-	"github.com/lulf/teig-event-store/pkg/api"
+	"github.com/lulf/sacl/pkg/api"
 )
 
 type Datastore interface {
