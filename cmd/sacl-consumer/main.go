@@ -5,12 +5,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
-	"net"
 	"os"
-	"qpid.apache.org/electron"
+	"pack.ag/amqp"
 )
 
 type Payload struct {
@@ -35,33 +35,31 @@ func main() {
 	}
 	flag.Parse()
 
-	tcpConn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", connectHost, port))
+	amqpConn, err := amqp.Dial(fmt.Sprintf("amqp://%s:%d", connectHost, port))
 	if err != nil {
 		log.Fatal("Dialing:", err)
 	}
+	defer amqpConn.Close()
 
-	opts := []electron.ConnectionOption{
-		electron.ContainerId("sacl-consumer"),
-	}
-	amqpConn, err := electron.NewConnection(tcpConn, opts...)
+	session, err := amqpConn.NewSession()
 	if err != nil {
-		log.Fatal("NewConnection:", err)
+		log.Fatal("Session:", err)
 	}
 
-	sopts := []electron.LinkOption{electron.Source(topic)}
-	r, err := amqpConn.Receiver(sopts...)
+	r, err := session.NewReceiver(
+		amqp.LinkSourceAddress(topic),
+		amqp.LinkCredit(10),
+		amqp.LinkPropertyInt64("offset", offset),
+	)
 	if err != nil {
 		log.Fatal("Receiver:", r)
 	}
 
 	for {
-		if rm, err := r.Receive(); err == nil {
-			rm.Accept()
-			m := rm.Message
-			body := m.Body()
+		if msg, err := r.Receive(context.TODO()); err == nil {
+			body := msg.Value
 			fmt.Println(body)
-		} else if err == electron.Closed {
-			return
+			msg.Accept()
 		} else {
 			log.Fatalf("receive error %v", err)
 		}

@@ -17,6 +17,8 @@ Consumers consume events by attaching to a topic starting from the last entry. (
 
 SACL uses the Apache Qpid Proton Go bindings, which is a wrapper around a C library. To compile SACL, you must install the [Apache Qpid Proton](https://qpid.apache.org/proton/index.html) library.
 
+The consumer example uses [this](https://github.com/vcabbage/amqp) library.
+
 ```
 make
 ```
