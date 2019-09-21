@@ -52,14 +52,14 @@ func (ds SqlDatastore) InsertMessage(topic string, message *api.Message) error {
 
 	insertionTime := time.Now().UTC().Unix()
 
-	insertStmt, err := tx.Prepare("INSERT INTO ? (id, insertion_time, payload) values(?, ?, ?)")
+	insertStmt, err := tx.Prepare(fmt.Sprintf("INSERT INTO %s (id, insertion_time, payload) values(?, ?, ?)", topic))
 	if err != nil {
 		log.Print("Preparing insert statement:", err)
 		return err
 	}
 	defer insertStmt.Close()
 
-	_, err = insertStmt.Exec(topic, message.Id, insertionTime, message.Payload)
+	_, err = insertStmt.Exec(message.Id, insertionTime, message.Payload)
 	if err != nil {
 		log.Print("Inserting entry:", err)
 		return err
@@ -113,14 +113,14 @@ func (ds SqlDatastore) GarbageCollect(topic string) error {
 }
 
 func (ds SqlDatastore) ListMessages(topic string, limit int64, offset int64) ([]*api.Message, error) {
-	stmt, err := ds.handle.Prepare("SELECT id, payload FROM ? WHERE id > ? ORDER BY id ASC LIMIT ?")
+	stmt, err := ds.handle.Prepare(fmt.Sprintf("SELECT id, payload FROM %s WHERE id > ? ORDER BY id ASC LIMIT ?", topic))
 	if err != nil {
 		log.Print("Preparing query:", err)
 		return nil, err
 	}
 	defer stmt.Close()
 
-	rows, err := stmt.Query(topic, offset, limit)
+	rows, err := stmt.Query(offset, limit)
 	if err != nil {
 		log.Print("Executing query:", err)
 		return nil, err
@@ -152,7 +152,7 @@ func (ds SqlDatastore) NumMessages(topic string) (int64, error) {
 
 func (ds SqlDatastore) LastMessageId(topic string) (int64, error) {
 	var count sql.NullInt64
-	row := ds.handle.QueryRow(fmt.Sprintf("SELECT MAX(id) FROM %s"))
+	row := ds.handle.QueryRow(fmt.Sprintf("SELECT MAX(id) FROM %s", topic))
 	err := row.Scan(&count)
 	return count.Int64, err
 }

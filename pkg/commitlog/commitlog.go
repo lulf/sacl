@@ -30,7 +30,9 @@ func NewCommitLog(ds datastore.Datastore) (*CommitLog, error) {
 		if err != nil {
 			return nil, err
 		}
-		topicMap[topicName] = createTopic(topicName, lastId)
+		topic := createTopic(topicName, lastId, ds)
+		topicMap[topicName] = topic
+		go topic.run()
 	}
 	lock := &sync.Mutex{}
 	return &CommitLog{
@@ -52,13 +54,13 @@ func (cl *CommitLog) GetOrNewTopic(topicName string) (*Topic, error) {
 		log.Print("Creating topic:", err)
 		return nil, err
 	}
-	topic = createTopic(topicName, lastId)
+	topic = createTopic(topicName, lastId, cl.ds)
 	cl.topicMap[topicName] = topic
 	go topic.run()
 	return topic, nil
 }
 
-func createTopic(topicName string, lastId int64) *Topic {
+func createTopic(topicName string, lastId int64, ds datastore.Datastore) *Topic {
 	subLock := &sync.Mutex{}
 	return &Topic{
 		name:          topicName,
@@ -67,5 +69,6 @@ func createTopic(topicName string, lastId int64) *Topic {
 		subs:          make(map[string]*Subscriber),
 		incoming:      make(chan *Entry, 100),
 		subLock:       subLock,
+		ds:            ds,
 	}
 }

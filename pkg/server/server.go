@@ -53,6 +53,7 @@ func (s *Server) connection(conn electron.Connection) {
 			case *electron.IncomingSender:
 				snd := in.Accept().(electron.Sender)
 				// TODO: Read offset from properties
+				log.Println("Got new sender", snd)
 				topicName := snd.Source()
 				topic, err := s.cl.GetOrNewTopic(topicName)
 				if err != nil {
@@ -60,6 +61,7 @@ func (s *Server) connection(conn electron.Connection) {
 					snd.Close(nil)
 					continue
 				}
+				log.Printf("Topic %s", topicName)
 				sub := topic.NewSubscriber(conn.Container().Id()+"-"+snd.LinkName(), -1)
 				subs = append(subs, sub)
 				go s.sender(snd, sub)
@@ -68,6 +70,7 @@ func (s *Server) connection(conn electron.Connection) {
 				in.SetPrefetch(true)
 				in.SetCapacity(10) // TODO: Adjust based on backlog
 				rcv := in.Accept().(electron.Receiver)
+				log.Println("Got new receiver", rcv)
 
 				topicName := rcv.Target()
 				topic, err := s.cl.GetOrNewTopic(topicName)
@@ -76,6 +79,7 @@ func (s *Server) connection(conn electron.Connection) {
 					rcv.Close(nil)
 					continue
 				}
+				log.Println("Starting receiver process")
 				go s.receiver(topic, rcv)
 			default:
 				in.Accept()
@@ -94,6 +98,7 @@ func (s *Server) sender(snd electron.Sender, sub *commitlog.Subscriber) {
 			sub.Close()
 			return
 		default:
+			log.Println("Polling for events")
 			messages, err := sub.Poll()
 			if err != nil {
 				log.Print("Error polling events for sub", err)
@@ -101,6 +106,7 @@ func (s *Server) sender(snd electron.Sender, sub *commitlog.Subscriber) {
 				sub.Close()
 				return
 			}
+			log.Println("No messages")
 			for _, msg := range messages {
 				m, err := amqp.DecodeMessage(msg.Payload)
 				if err != nil {
@@ -127,6 +133,7 @@ func (s *Server) receiver(topic *commitlog.Topic, rcv electron.Receiver) {
 			rcv.Close(nil)
 			return
 		default:
+			log.Println("Receiving message...")
 			rm, err := rcv.Receive()
 			if err == nil {
 				m := rm.Message
@@ -138,6 +145,7 @@ func (s *Server) receiver(topic *commitlog.Topic, rcv electron.Receiver) {
 					topic.AddEntry(commitlog.NewEntry(message,
 						func(ok bool) {
 							if ok {
+								log.Println("Confirming persistd message!")
 								rm.Accept()
 							} else {
 								rm.Reject()
