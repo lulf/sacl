@@ -1,6 +1,6 @@
 # Slim 
 
-Slim is an AMQP-based ordered commit log (like Kafka) with focus on a simple interface, keeping a small footprint, and providing decent performance.
+Slim is an AMQP-based ordered commit log (think Apache Kafka) with focus on a simple interface, keeping a small footprint, and providing decent performance.
 
 Slim does not offer features such as TLS, replication or authentication.
 
