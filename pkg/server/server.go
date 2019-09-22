@@ -6,8 +6,8 @@
 package server
 
 import (
-	"github.com/lulf/sacl/pkg/api"
-	"github.com/lulf/sacl/pkg/commitlog"
+	"github.com/lulf/slim/pkg/api"
+	"github.com/lulf/slim/pkg/commitlog"
 	"log"
 	"net"
 	"qpid.apache.org/amqp"

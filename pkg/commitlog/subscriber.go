@@ -6,7 +6,7 @@
 package commitlog
 
 import (
-	"github.com/lulf/sacl/pkg/api"
+	"github.com/lulf/slim/pkg/api"
 	"sync/atomic"
 )
 

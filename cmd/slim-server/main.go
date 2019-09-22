@@ -7,9 +7,9 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/lulf/sacl/pkg/commitlog"
-	"github.com/lulf/sacl/pkg/datastore"
-	"github.com/lulf/sacl/pkg/server"
+	"github.com/lulf/slim/pkg/commitlog"
+	"github.com/lulf/slim/pkg/datastore"
+	"github.com/lulf/slim/pkg/server"
 	"log"
 	"net"
 	"os"
@@ -46,7 +46,7 @@ func main() {
 		log.Fatal("Creating commit log:", err)
 	}
 
-	es := server.NewServer("sacl-server", cl)
+	es := server.NewServer("slim-server", cl)
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", listenAddr, listenPort))
 	if err != nil {

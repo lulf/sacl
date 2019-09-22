@@ -1,4 +1,4 @@
-module github.com/lulf/sacl
+module github.com/lulf/slim
 
 go 1.12
 

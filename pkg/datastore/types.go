@@ -6,7 +6,7 @@ package datastore
 
 import (
 	"database/sql"
-	"github.com/lulf/sacl/pkg/api"
+	"github.com/lulf/slim/pkg/api"
 )
 
 type Datastore interface {

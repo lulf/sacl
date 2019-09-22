@@ -15,10 +15,10 @@ Consumers consume events by attaching to a topic starting from the last entry or
 ## Usage
 
 ```
-sacl-server -d log.db -l 127.0.0.1 -p 5672 &
+slim-server -d log.db -l 127.0.0.1 -p 5672 &
 
-sacl-producer -m 10 -h 127.0.0.1 -p 5672
-sacl-consumer -o 5 -h 127.0.0.1 -p 5672
+slim-producer -m 10 -h 127.0.0.1 -p 5672
+slim-consumer -o 5 -h 127.0.0.1 -p 5672
 ```
 
 ## Building

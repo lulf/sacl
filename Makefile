@@ -1,12 +1,12 @@
 all: build 
 
 container_build: build
-	podman build -t sacl-server:latest .
+	podman build -t slim-server:latest .
 
 build: builddir
-	GOOS=linux GOARCH=amd64 go build -o build/sacl-server cmd/sacl-server/main.go
-	GOOS=linux GOARCH=amd64 go build -o build/sacl-producer cmd/sacl-producer/main.go
-	GOOS=linux GOARCH=amd64 go build -o build/sacl-consumer cmd/sacl-consumer/main.go
+	GOOS=linux GOARCH=amd64 go build -o build/slim-server cmd/slim-server/main.go
+	GOOS=linux GOARCH=amd64 go build -o build/slim-producer cmd/slim-producer/main.go
+	GOOS=linux GOARCH=amd64 go build -o build/slim-consumer cmd/slim-consumer/main.go
 
 test:
 	go test -v ./...

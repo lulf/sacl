@@ -6,7 +6,7 @@
 package server
 
 import (
-	"github.com/lulf/sacl/pkg/commitlog"
+	"github.com/lulf/slim/pkg/commitlog"
 	"qpid.apache.org/amqp"
 	"qpid.apache.org/electron"
 )

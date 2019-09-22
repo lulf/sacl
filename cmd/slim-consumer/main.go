@@ -42,7 +42,7 @@ func main() {
 	}
 
 	opts := []electron.ConnectionOption{
-		electron.ContainerId("sacl-consumer"),
+		electron.ContainerId("slim-consumer"),
 	}
 	amqpConn, err := electron.NewConnection(tcpConn, opts...)
 	if err != nil {

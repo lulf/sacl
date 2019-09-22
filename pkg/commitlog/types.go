@@ -5,8 +5,8 @@
 package commitlog
 
 import (
-	"github.com/lulf/sacl/pkg/api"
-	"github.com/lulf/sacl/pkg/datastore"
+	"github.com/lulf/slim/pkg/api"
+	"github.com/lulf/slim/pkg/datastore"
 	"sync"
 )
 

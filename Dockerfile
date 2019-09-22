@@ -1,6 +1,6 @@
 FROM fedora:latest
 
 RUN dnf -y update && dnf -y install qpid-proton-c && dnf -y clean all
-ADD build/sacl-server /
+ADD build/slim-server /
 
-ENTRYPOINT ["/sacl-server"]
+ENTRYPOINT ["/slim-server"]

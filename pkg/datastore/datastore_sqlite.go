@@ -7,7 +7,7 @@ package datastore
 import (
 	"database/sql"
 	"fmt"
-	"github.com/lulf/sacl/pkg/api"
+	"github.com/lulf/slim/pkg/api"
 	_ "github.com/mattn/go-sqlite3"
 	"log"
 	"time"

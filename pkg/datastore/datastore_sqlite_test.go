@@ -6,7 +6,7 @@ package datastore
 
 import (
 	"fmt"
-	"github.com/lulf/sacl/pkg/api"
+	"github.com/lulf/slim/pkg/api"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"testing"
