@@ -1,10 +1,10 @@
-# Simple AMQP Commit Log (SACL)
+# Slim 
 
-Sacl is an AMQP-based ordered commit log (like Kafka) with focus on a simple interface, keeping a small footprint, and providing decent performance.
+Slim is an AMQP-based ordered commit log (like Kafka) with focus on a simple interface, keeping a small footprint, and providing decent performance.
 
-Sacl does not offer features such as TLS, replication or authentication.
+Slim does not offer features such as TLS, replication or authentication.
 
-Sacl can be used in combination with other AMQP components such as the [Apache Qpid Dispatch Router](https://qpid.apache.org/components/dispatch-router/index.html) to provide TLS, authentication and load balancing across multiple instances (at the expense of ordering).
+Slim can be used in combination with other AMQP components such as the [Apache Qpid Dispatch Router](https://qpid.apache.org/components/dispatch-router/index.html) to provide TLS, authentication and load balancing across multiple instances (at the expense of ordering).
 
 The event log can be limited by time or not at all (by size will be added).
 
@@ -23,7 +23,7 @@ slim-consumer -o 5 -h 127.0.0.1 -p 5672
 
 ## Building
 
-SACL uses the Apache Qpid Proton Go bindings, which is a wrapper around a C library. To compile SACL, you must install the [Apache Qpid Proton](https://qpid.apache.org/proton/index.html) library. 
+Slim uses the Apache Qpid Proton Go bindings, which is a wrapper around a C library. To compile Slim, you must install the [Apache Qpid Proton](https://qpid.apache.org/proton/index.html) library. 
 
 To pull down dependencies:
 
