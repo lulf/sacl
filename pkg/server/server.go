@@ -65,7 +65,22 @@ func (s *Server) connection(conn electron.Connection) {
 				offsetProp, ok := filter["offset"]
 				var offset int64
 				if ok {
-					offset = offsetProp.(int64)
+					switch offsetProp.(type) {
+					case int64:
+						offset = offsetProp.(int64)
+					case int32:
+						offset = int64(offsetProp.(int32))
+					case uint32:
+						offset = int64(offsetProp.(uint32))
+					case uint64:
+						offset = int64(offsetProp.(uint64))
+					case int:
+						offset = int64(offsetProp.(int))
+					default:
+						log.Print("Invalid offset type: ", offsetProp)
+						snd.Close(nil)
+						continue
+					}
 				} else {
 					offset = -1
 				}
