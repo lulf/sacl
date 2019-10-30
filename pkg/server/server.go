@@ -6,12 +6,12 @@
 package server
 
 import (
+	"github.com/apache/qpid-proton/go/pkg/amqp"
+	"github.com/apache/qpid-proton/go/pkg/electron"
 	"github.com/lulf/slim/pkg/api"
 	"github.com/lulf/slim/pkg/commitlog"
 	"log"
 	"net"
-	"qpid.apache.org/amqp"
-	"qpid.apache.org/electron"
 )
 
 func NewServer(id string, cl *commitlog.CommitLog) *Server {

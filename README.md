@@ -30,8 +30,7 @@ To pull down dependencies:
 ```
 go get github.com/mattn/go-sqlite3
 go get github.com/stretchr/testify
-go get qpid.apache.org/amqp
-go get qpid.apache.org/electron
+go get github.com/qpid-proton
 ```
 
 Then, to build:

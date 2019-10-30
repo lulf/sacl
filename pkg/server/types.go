@@ -6,9 +6,9 @@
 package server
 
 import (
+	"github.com/apache/qpid-proton/go/pkg/amqp"
+	"github.com/apache/qpid-proton/go/pkg/electron"
 	"github.com/lulf/slim/pkg/commitlog"
-	"qpid.apache.org/amqp"
-	"qpid.apache.org/electron"
 )
 
 type Server struct {

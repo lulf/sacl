@@ -7,11 +7,11 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/apache/qpid-proton/go/pkg/amqp"
+	"github.com/apache/qpid-proton/go/pkg/electron"
 	"log"
 	"net"
 	"os"
-	"qpid.apache.org/amqp"
-	"qpid.apache.org/electron"
 )
 
 type Payload struct {
