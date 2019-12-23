@@ -112,15 +112,15 @@ func (ds SqlDatastore) GarbageCollect(topic string) error {
 	return tx.Commit()
 }
 
-func (ds SqlDatastore) ListMessages(topic string, limit int64, offset int64) ([]*api.Message, error) {
-	stmt, err := ds.handle.Prepare(fmt.Sprintf("SELECT id, payload FROM %s WHERE id > ? ORDER BY id ASC LIMIT ?", topic))
+func (ds SqlDatastore) ListMessages(topic string, limit int64, offset int64, insertionTime int64) ([]*api.Message, error) {
+	stmt, err := ds.handle.Prepare(fmt.Sprintf("SELECT id, payload FROM %s WHERE id > ? AND insertion_time > ? ORDER BY id ASC LIMIT ?", topic))
 	if err != nil {
 		log.Print("Preparing query:", err)
 		return nil, err
 	}
 	defer stmt.Close()
 
-	rows, err := stmt.Query(offset, limit)
+	rows, err := stmt.Query(offset, insertionTime, limit)
 	if err != nil {
 		log.Print("Executing query:", err)
 		return nil, err

@@ -15,6 +15,7 @@ type Subscriber struct {
 	lock   *sync.Mutex
 	cond   *sync.Cond
 	offset int64
+	since  int64
 	topic  *Topic
 }
 

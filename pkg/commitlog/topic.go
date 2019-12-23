@@ -34,7 +34,7 @@ func (topic *Topic) run() {
 	}
 }
 
-func (topic *Topic) NewSubscriber(id string, offset int64) *Subscriber {
+func (topic *Topic) NewSubscriber(id string, offset int64, since int64) *Subscriber {
 	lock := &sync.Mutex{}
 	cond := sync.NewCond(lock)
 	if offset == -1 {
@@ -46,6 +46,7 @@ func (topic *Topic) NewSubscriber(id string, offset int64) *Subscriber {
 		lock:   lock,
 		cond:   cond,
 		offset: offset,
+		since:  since,
 	}
 
 	topic.subLock.Lock()

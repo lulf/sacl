@@ -23,7 +23,7 @@ func (s *Subscriber) Poll() ([]*api.Message, error) {
 		}
 	}
 	s.lock.Unlock()
-	return topic.ds.ListMessages(topic.name, -1, s.offset)
+	return topic.ds.ListMessages(topic.name, -1, s.offset, s.since)
 }
 
 func (s *Subscriber) Commit(offset int64) {

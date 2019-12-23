@@ -6,12 +6,14 @@
 package server
 
 import (
+	"fmt"
+	"log"
+	"net"
+
 	"github.com/apache/qpid-proton/go/pkg/amqp"
 	"github.com/apache/qpid-proton/go/pkg/electron"
 	"github.com/lulf/slim/pkg/api"
 	"github.com/lulf/slim/pkg/commitlog"
-	"log"
-	"net"
 )
 
 func NewServer(id string, cl *commitlog.CommitLog) *Server {
@@ -34,6 +36,30 @@ func (s *Server) Run(listener net.Listener) {
 		}
 		go s.connection(conn)
 	}
+}
+
+func filterAsInt64(filter map[amqp.Symbol]interface{}, propertyName amqp.Symbol, defaultValue int64) (int64, error) {
+	propertyValue, ok := filter[propertyName]
+	var value int64
+	if ok {
+		switch propertyValue.(type) {
+		case int64:
+			value = propertyValue.(int64)
+		case int32:
+			value = int64(propertyValue.(int32))
+		case uint32:
+			value = int64(propertyValue.(uint32))
+		case uint64:
+			value = int64(propertyValue.(uint64))
+		case int:
+			value = int64(propertyValue.(int))
+		default:
+			return 0, fmt.Errorf("Invalid value type", propertyValue)
+		}
+	} else {
+		value = defaultValue
+	}
+	return value, nil
 }
 
 func (s *Server) connection(conn electron.Connection) {
@@ -61,30 +87,23 @@ func (s *Server) connection(conn electron.Connection) {
 					snd.Close(nil)
 					continue
 				}
+
 				filter := snd.Filter()
-				offsetProp, ok := filter["offset"]
-				var offset int64
-				if ok {
-					switch offsetProp.(type) {
-					case int64:
-						offset = offsetProp.(int64)
-					case int32:
-						offset = int64(offsetProp.(int32))
-					case uint32:
-						offset = int64(offsetProp.(uint32))
-					case uint64:
-						offset = int64(offsetProp.(uint64))
-					case int:
-						offset = int64(offsetProp.(int))
-					default:
-						log.Print("Invalid offset type: ", offsetProp)
-						snd.Close(nil)
-						continue
-					}
-				} else {
-					offset = -1
+				// Retrieve offset
+				offset, err := filterAsInt64(filter, "offset", -1)
+				if err != nil {
+					log.Println(err)
+					continue
 				}
-				sub := topic.NewSubscriber(conn.Container().Id()+"-"+snd.LinkName(), offset)
+
+				// Retrieve since filter
+				since, err := filterAsInt64(filter, "since", 0)
+				if err != nil {
+					log.Println(err)
+					continue
+				}
+
+				sub := topic.NewSubscriber(conn.Container().Id()+"-"+snd.LinkName(), offset, since)
 				subs = append(subs, sub)
 				go s.sender(snd, sub)
 
