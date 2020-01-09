@@ -121,7 +121,9 @@ func (s *Server) connection(conn electron.Connection) {
 				}
 				go s.receiver(topic, rcv)
 			default:
-				in.Accept()
+				if in != nil {
+					in.Accept()
+				}
 			}
 		}
 	}
