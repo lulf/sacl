@@ -7,12 +7,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/lulf/slim/pkg/commitlog"
-	"github.com/lulf/slim/pkg/datastore"
-	"github.com/lulf/slim/pkg/server"
 	"log"
 	"net"
 	"os"
+	"time"
+
+	"github.com/lulf/slim/pkg/commitlog"
+	"github.com/lulf/slim/pkg/datastore"
+	"github.com/lulf/slim/pkg/server"
 )
 
 func main() {
@@ -21,16 +23,18 @@ func main() {
 	var maxlogsize int64
 	var listenAddr string
 	var listenPort int
+	var gcInterval int
 
 	flag.StringVar(&dbfile, "d", "store.db", "Path to database file (default: store.db)")
 	flag.Int64Var(&maxlogsize, "m", -1, "Max number of bytes in log (default: unlimited)")
 	flag.Int64Var(&maxlogage, "a", -1, "Max age in seconds of log entries (default: unlimited)")
+	flag.IntVar(&gcInterval, "g", 0, "Garbage collect interval (default: 0 (never))")
 	flag.StringVar(&listenAddr, "l", "127.0.0.1", "Interface address to listen on (default: 127.0.0.1)")
 	flag.IntVar(&listenPort, "p", 5672, "Port to listen on (default: 5672)")
 
 	flag.Usage = func() {
 		fmt.Printf("Usage of %s:\n", os.Args[0])
-		fmt.Printf("    [-l 0.0.0.0] [-p 5672] [-c 10] [-m 100] [-d store.db]\n")
+		fmt.Printf("    [-l 0.0.0.0] [-p 5672] [-c 10] [-m 100] [-g 120] [-d store.db]\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -44,6 +48,10 @@ func main() {
 	err = ds.Initialize()
 	if err != nil {
 		log.Fatal("Initializing Datastore:", err)
+	}
+
+	if gcInterval > 0 {
+		go datastore.GarbageCollector(time.Duration(gcInterval), ds)
 	}
 
 	cl, err := commitlog.NewCommitLog(ds)

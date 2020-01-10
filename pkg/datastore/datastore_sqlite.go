@@ -17,7 +17,7 @@ func (ds SqlDatastore) Close() {
 	ds.handle.Close()
 }
 
-func NewSqliteDatastore(fileName string, maxLogSize int64, maxLogAge int64) (*SqlDatastore, error) {
+func NewSqliteDatastore(fileName string, maxLogAge int64, maxLogSize int64) (*SqlDatastore, error) {
 	db, err := sql.Open("sqlite3", fileName)
 	if err != nil {
 		log.Print("Opening Database:", err)
@@ -132,13 +132,13 @@ func (ds SqlDatastore) GarbageCollect(topic string) error {
 	if ds.maxLogAge > 0 {
 		now := time.Now().UTC().Unix()
 		oldest := now - ds.maxLogAge
-		removeByAge, err = tx.Prepare("DELETE FROM ? WHERE insertion_time < ?")
+		removeByAge, err = tx.Prepare(fmt.Sprintf("DELETE FROM %s WHERE insertion_time < ?", getTopicTableName(topic)))
 		if err != nil {
 			log.Print("Preparing remove statement:", err)
 			return err
 		}
 		defer removeByAge.Close()
-		_, err = removeByAge.Exec(getTopicTableName(topic), oldest)
+		_, err = removeByAge.Exec(oldest)
 		if err != nil {
 			log.Print("Removing oldest entry:", err)
 			return err
