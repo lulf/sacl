@@ -49,12 +49,12 @@ func (cl *CommitLog) GetOrNewTopic(topicName string) (*Topic, error) {
 	if ok {
 		return topic, nil
 	}
-	lastId, err := cl.ds.CreateTopic(topicName)
+	err := cl.ds.CreateTopic(topicName)
 	if err != nil {
 		log.Print("Creating topic:", err)
 		return nil, err
 	}
-	topic = createTopic(topicName, lastId, cl.ds)
+	topic = createTopic(topicName, 0, cl.ds)
 	cl.topicMap[topicName] = topic
 	go topic.run()
 	return topic, nil

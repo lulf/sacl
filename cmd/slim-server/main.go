@@ -41,6 +41,11 @@ func main() {
 	}
 	defer ds.Close()
 
+	err = ds.Initialize()
+	if err != nil {
+		log.Fatal("Initializing Datastore:", err)
+	}
+
 	cl, err := commitlog.NewCommitLog(ds)
 	if err != nil {
 		log.Fatal("Creating commit log:", err)

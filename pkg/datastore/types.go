@@ -10,7 +10,8 @@ import (
 )
 
 type Datastore interface {
-	CreateTopic(topic string) (int64, error)
+	Initialize() error
+	CreateTopic(topic string) error
 	InsertMessage(topic string, message *api.Message) error
 	// List messages starting from a given offset.  Offset = 0 starts at the oldest entry.
 	ListMessages(topic string, limit int64, offset int64, insertTime int64) ([]*api.Message, error)

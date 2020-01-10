@@ -31,16 +31,51 @@ func NewSqliteDatastore(fileName string, maxLogSize int64, maxLogAge int64) (*Sq
 	}, nil
 }
 
-func (ds SqlDatastore) CreateTopic(topic string) (int64, error) {
-	// Create initial database table
-	tableCreate := fmt.Sprintf("create table if not exists %s (id integer not null primary key, insertion_time integer, payload text);", topic)
-
+func (ds SqlDatastore) Initialize() error {
+	tableCreate := "create table if not exists topics (name text not null primary key, table_name text);"
 	_, err := ds.handle.Exec(tableCreate)
 	if err != nil {
-		log.Print("Creating topic:", topic, err)
-		return 0, err
+		log.Print("Creating topics table:", err)
+		return err
 	}
-	return 0, nil
+	return nil
+}
+
+func (ds SqlDatastore) CreateTopic(topic string) error {
+	// Create initial database table
+	tx, err := ds.handle.Begin()
+	if err != nil {
+		log.Print("Starting transaction:", err)
+		return err
+	}
+
+	createTopic, err := tx.Prepare("INSERT INTO topics (name, table_name) values(?, ?);")
+	if err != nil {
+		log.Print("Preparing create topic:", err)
+		return err
+	}
+	defer createTopic.Close()
+
+	topicTableName := getTopicTableName(topic)
+	createTable, err := tx.Prepare(fmt.Sprintf("create table if not exists %s (id integer not null primary key, insertion_time integer, payload text);", topicTableName))
+	if err != nil {
+		log.Print("Preparing create table:", err)
+		return err
+	}
+	defer createTable.Close()
+
+	_, err = createTopic.Exec(topic, topicTableName)
+	if err != nil {
+		log.Print("Create topic:", topic, err)
+		return err
+	}
+
+	_, err = createTable.Exec()
+	if err != nil {
+		log.Print("Creating topic table:", topicTableName, err)
+		return err
+	}
+	return tx.Commit()
 }
 
 func (ds SqlDatastore) InsertMessage(topic string, message *api.Message) error {
@@ -52,7 +87,7 @@ func (ds SqlDatastore) InsertMessage(topic string, message *api.Message) error {
 
 	insertionTime := time.Now().UTC().Unix()
 
-	insertStmt, err := tx.Prepare(fmt.Sprintf("INSERT INTO %s (id, insertion_time, payload) values(?, ?, ?)", topic))
+	insertStmt, err := tx.Prepare(fmt.Sprintf("INSERT INTO %s (id, insertion_time, payload) values(?, ?, ?)", getTopicTableName(topic)))
 	if err != nil {
 		log.Print("Preparing insert statement:", err)
 		return err
@@ -103,7 +138,7 @@ func (ds SqlDatastore) GarbageCollect(topic string) error {
 			return err
 		}
 		defer removeByAge.Close()
-		_, err = removeByAge.Exec(topic, oldest)
+		_, err = removeByAge.Exec(getTopicTableName(topic), oldest)
 		if err != nil {
 			log.Print("Removing oldest entry:", err)
 			return err
@@ -113,7 +148,7 @@ func (ds SqlDatastore) GarbageCollect(topic string) error {
 }
 
 func (ds SqlDatastore) ListMessages(topic string, limit int64, offset int64, insertionTime int64) ([]*api.Message, error) {
-	stmt, err := ds.handle.Prepare(fmt.Sprintf("SELECT id, payload FROM %s WHERE id > ? AND insertion_time > ? ORDER BY id ASC LIMIT ?", topic))
+	stmt, err := ds.handle.Prepare(fmt.Sprintf("SELECT id, payload FROM %s WHERE id > ? AND insertion_time > ? ORDER BY id ASC LIMIT ?", getTopicTableName(topic)))
 	if err != nil {
 		log.Print("Preparing query:", err)
 		return nil, err
@@ -145,20 +180,24 @@ func (ds SqlDatastore) ListMessages(topic string, limit int64, offset int64, ins
 
 func (ds SqlDatastore) NumMessages(topic string) (int64, error) {
 	var count int64
-	row := ds.handle.QueryRow(fmt.Sprintf("SELECT COUNT(id) FROM %s", topic))
+	row := ds.handle.QueryRow(fmt.Sprintf("SELECT COUNT(id) FROM %s", getTopicTableName(topic)))
 	err := row.Scan(&count)
 	return count, err
 }
 
+func getTopicTableName(topic string) string {
+	return fmt.Sprintf("topic_%s", topic)
+}
+
 func (ds SqlDatastore) LastMessageId(topic string) (int64, error) {
 	var count sql.NullInt64
-	row := ds.handle.QueryRow(fmt.Sprintf("SELECT MAX(id) FROM %s", topic))
+	row := ds.handle.QueryRow(fmt.Sprintf("SELECT MAX(id) FROM %s", getTopicTableName(topic)))
 	err := row.Scan(&count)
 	return count.Int64, err
 }
 
 func (ds SqlDatastore) ListTopics() ([]string, error) {
-	stmt, err := ds.handle.Prepare("SELECT name FROM sqlite_master")
+	stmt, err := ds.handle.Prepare("SELECT name FROM topics")
 	if err != nil {
 		log.Print("Preparing query:", err)
 		return nil, err
