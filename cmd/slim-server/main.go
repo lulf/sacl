@@ -39,6 +39,7 @@ func main() {
 	}
 	flag.Parse()
 
+	// ds, err := datastore.NewMemoryDatastore()
 	ds, err := datastore.NewSqliteDatastore(dbfile, maxlogage, maxlogsize)
 	if err != nil {
 		log.Fatal("Opening Datastore:", err)

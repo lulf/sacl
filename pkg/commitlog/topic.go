@@ -37,8 +37,9 @@ func (topic *Topic) run() {
 func (topic *Topic) NewSubscriber(id string, offset int64, since int64) *Subscriber {
 	lock := &sync.Mutex{}
 	cond := sync.NewCond(lock)
-	if offset == -1 {
-		offset = atomic.LoadInt64(&topic.lastCommitted)
+	lastCommitted := atomic.LoadInt64(&topic.lastCommitted)
+	if offset == -1 || offset >= lastCommitted {
+		offset = lastCommitted
 	}
 	sub := &Subscriber{
 		id:     id,

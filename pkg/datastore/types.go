@@ -5,7 +5,6 @@
 package datastore
 
 import (
-	"database/sql"
 	"github.com/lulf/slim/pkg/api"
 )
 
@@ -21,10 +20,4 @@ type Datastore interface {
 	GarbageCollect(topic string) error
 	ListTopics() ([]string, error)
 	Close()
-}
-
-type SqlDatastore struct {
-	handle     *sql.DB
-	maxLogSize int64
-	maxLogAge  int64
 }

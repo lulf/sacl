@@ -5,13 +5,22 @@
 package datastore
 
 import (
-	"database/sql"
 	"fmt"
-	"github.com/lulf/slim/pkg/api"
-	_ "github.com/mattn/go-sqlite3"
 	"log"
 	"time"
+
+	"database/sql"
+
+	"github.com/lulf/slim/pkg/api"
+
+	_ "github.com/mattn/go-sqlite3"
 )
+
+type SqlDatastore struct {
+	handle     *sql.DB
+	maxLogSize int64
+	maxLogAge  int64
+}
 
 func (ds SqlDatastore) Close() {
 	ds.handle.Close()
