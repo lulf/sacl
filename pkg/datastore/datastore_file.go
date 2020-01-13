@@ -35,8 +35,8 @@ type topicIndex struct {
 }
 
 type index struct {
-	header indexHeader
-	index  []indexRecord
+	header  indexHeader
+	records []indexRecord
 }
 
 type indexHeader struct {
@@ -88,9 +88,12 @@ func (ds *fileDatastore) Initialize() error {
 		log.Print("Listing topics:", err)
 		return err
 	}
-
 	for _, topic := range topics {
-		ds.topics[topic] = &topicIndex{}
+		// TODO: Read from disk
+		ds.topics[topic] = &topicIndex{
+			indexFile: "data" + string(os.PathSeparator) + "0" + string(os.PathSeparator) + "index.dat",
+			dataFile:  "data" + string(os.PathSeparator) + "0" + string(os.PathSeparator) + "data.bin",
+		}
 	}
 	return nil
 }
@@ -116,14 +119,40 @@ func (ds *fileDatastore) CreateTopic(topic string) error {
 	}
 
 	ds.topicLock.Lock()
-	ds.topics[topic] = &topicIndex{}
+	ds.topics[topic] = &topicIndex{
+		indexFile: "data" + string(os.PathSeparator) + "0" + string(os.PathSeparator) + "index0.dat",
+		dataFile:  "data" + string(os.PathSeparator) + "0" + string(os.PathSeparator) + "data0.bin",
+		index: &index{
+			header: &indexHeader{
+				size:      0,
+				location:  0,
+				dataFile:  "data0.bin",
+				nextIndex: "",
+			},
+			records: make([]indexRecord, 0),
+		},
+		data: make([]*api.Message, 0),
+	}
 	ds.topicLock.Unlock()
 
 	return tx.Commit()
 }
 
 func (ds *fileDatastore) InsertMessage(topic string, message *api.Message) error {
-	return nil
+	store := ds.topics[topic]
+	index := store.index
+
+	// TODO: Use circular fast buffers with atomic operations
+	index.Lock()
+	defer index.Unlock()
+	store.data = append(store.data, message)
+	record := indexRecord{
+		index:    message.Id,
+		location: index.header.location,
+		size:     len(message.Payload),
+	}
+	index.records = append(index.records, record)
+	index.header.location += record.size
 }
 
 func (ds *fileDatastore) GarbageCollect(topic string) error {
@@ -132,6 +161,25 @@ func (ds *fileDatastore) GarbageCollect(topic string) error {
 
 func (ds *fileDatastore) ListMessages(topic string, limit int64, offset int64, insertionTime int64) ([]*api.Message, error) {
 	return nil, nil
+}
+
+func (ds *fileDatastore) StreamMessages(topic string, offset int64, callback StreamingFunc) error {
+	store := ds.topics[topic]
+	index := store.index
+
+	index.Lock()
+	defer index.Unlock()
+	for _, record := range index.records {
+
+	}
+	store.data = append(store.data, message)
+	record := indexRecord{
+		index:    message.Id,
+		location: index.header.location,
+		size:     len(message.Payload),
+	}
+	index.records = append(index.records, record)
+	index.header.location += record.size
 }
 
 func (ds *fileDatastore) NumMessages(topic string) (int64, error) {
