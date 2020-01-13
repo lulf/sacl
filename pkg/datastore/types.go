@@ -8,12 +8,15 @@ import (
 	"github.com/lulf/slim/pkg/api"
 )
 
+type StreamingFunc func(*api.Message) error
+
 type Datastore interface {
 	Initialize() error
 	CreateTopic(topic string) error
 	InsertMessage(topic string, message *api.Message) error
 	// List messages starting from a given offset.  Offset = 0 starts at the oldest entry.
 	ListMessages(topic string, limit int64, offset int64, insertTime int64) ([]*api.Message, error)
+	StreamMessages(topic string, offset int64, callback StreamingFunc) error
 	// Read the number of events stored
 	NumMessages(topic string) (int64, error)
 	LastMessageId(topic string) (int64, error)

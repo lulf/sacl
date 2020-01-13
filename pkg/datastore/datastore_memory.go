@@ -68,6 +68,24 @@ func (m *MemoryDatastore) ListMessages(topic string, limit int64, offset int64, 
 	return messages, nil
 }
 
+func (m *MemoryDatastore) StreamMessages(topic string, offset int64, callback StreamingFunc) error {
+	m.topicLock[topic].Lock()
+	messages := m.topicMap[topic]
+	if offset > 0 {
+		offset = min(offset, int64(len(messages)))
+		messages = messages[offset:]
+	}
+	for _, message := range messages {
+		err := callback(message)
+		if err != nil {
+			return err
+		}
+	}
+
+	defer m.topicLock[topic].Unlock()
+	return nil
+}
+
 func (m *MemoryDatastore) NumMessages(topic string) (int64, error) {
 	m.topicLock[topic].Lock()
 	defer m.topicLock[topic].Unlock()

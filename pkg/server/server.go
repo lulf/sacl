@@ -139,25 +139,26 @@ func (s *Server) sender(snd electron.Sender, sub *commitlog.Subscriber) {
 			sub.Close()
 			return
 		default:
-			messages, err := sub.Poll()
+			err := sub.Stream(func(msg *api.Message) error {
+				m, err := amqp.DecodeMessage(msg.Payload)
+				if err != nil {
+					log.Print("Decoding message:", m)
+					return err
+				}
+				outcome := snd.SendSync(m)
+				if outcome.Status == electron.Unsent || outcome.Status == electron.Unacknowledged {
+					log.Print("Error sending message:", outcome.Error)
+					return outcome.Error
+				}
+				sub.Commit(msg.Id)
+				return nil
+			})
+
 			if err != nil {
 				log.Print("Error polling events for sub", err)
 				snd.Close(nil)
 				sub.Close()
 				return
-			}
-			for _, msg := range messages {
-				m, err := amqp.DecodeMessage(msg.Payload)
-				if err != nil {
-					log.Print("Decoding message:", m)
-					continue
-				}
-				outcome := snd.SendSync(m)
-				if outcome.Status == electron.Unsent || outcome.Status == electron.Unacknowledged {
-					log.Print("Error sending message:", outcome.Error)
-					continue
-				}
-				sub.Commit(msg.Id)
 			}
 		}
 	}

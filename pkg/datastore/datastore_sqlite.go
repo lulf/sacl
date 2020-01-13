@@ -187,6 +187,20 @@ func (ds SqlDatastore) ListMessages(topic string, limit int64, offset int64, ins
 	return messages, nil
 }
 
+func (ds SqlDatastore) StreamMessages(topic string, offset int64, callback StreamingFunc) error {
+	messages, err := ds.ListMessages(topic, -1, offset, 0)
+	if err != nil {
+		return err
+	}
+	for _, message := range messages {
+		err = callback(message)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (ds SqlDatastore) NumMessages(topic string) (int64, error) {
 	var count int64
 	row := ds.handle.QueryRow(fmt.Sprintf("SELECT COUNT(id) FROM %s", getTopicTableName(topic)))

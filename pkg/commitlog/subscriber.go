@@ -10,6 +10,24 @@ import (
 	"sync/atomic"
 )
 
+type StreamFn = func(message *api.Message) error
+
+func (s *Subscriber) Stream(callback StreamFn) error {
+	topic := s.topic
+	var lastCommitted int64
+	s.lock.Lock()
+	for {
+		lastCommitted = atomic.LoadInt64(&topic.lastCommitted)
+		if lastCommitted == s.offset {
+			s.cond.Wait()
+		} else {
+			break
+		}
+	}
+	s.lock.Unlock()
+	return topic.ds.StreamMessages(topic.name, s.offset, callback)
+}
+
 func (s *Subscriber) Poll() ([]*api.Message, error) {
 	topic := s.topic
 	var lastCommitted int64
