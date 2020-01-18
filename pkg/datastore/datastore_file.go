@@ -5,6 +5,7 @@
 package datastore
 
 import (
+	"encoding/binary"
 	"log"
 	"os"
 	"sync"
@@ -23,20 +24,23 @@ type fileDatastore struct {
 	topicLock   *sync.Mutex
 	topics      map[string]*topicIndex
 
-	maxLogSize int64
-	maxLogAge  int64
+	maxBufferSize int64
+	maxLogSize    int64
+	maxLogAge     int64
 }
 
 type topicIndex struct {
 	indexFile string
 	dataFile  string
 	index     index
-	data      []*api.Message
+	writeIdx  int64
+	flushIdx  int64
+
+	data []*api.Message
 }
 
 type index struct {
-	header  indexHeader
-	records []indexRecord
+	header indexHeader
 }
 
 type indexHeader struct {
@@ -50,6 +54,52 @@ type indexRecord struct {
 	index    int64
 	location int64
 	size     int64
+}
+
+// Flush Algorithm
+// For each topic:
+// 1. Atomically compare flush vs write index
+// 2. If available, fetch next message
+// 3. Append message to current position known in header
+// 4. Increment header location and size
+// 5. Append index entry with index, location and size
+// 6. Write index header
+// 7. Flush data & index (in order)
+// 8. Update flushIdx
+func (ds fileDatastore) Flush() error {
+	// Update filehandles
+	dataFileHandles := make(map[string]*os.File, 0)
+	indexFileHandles := make(map[string]*os.File, 0)
+	indexes := make(map[string]*topicIndex, 0)
+
+	{
+		fs.topicLock.Lock()
+		defer fs.topicLock.Unlock()
+		for topic, index := range ds.topics {
+			if _, ok := dataFileHandles[topic]; !ok {
+				dh, err := os.Open(index.dataFile)
+				if err != nil {
+					return err
+				}
+				dataFileHandles[topic] = dh
+			}
+
+			if _, ok := indexFileHandles[topic]; !ok {
+				dh, err := os.Open(index.indexFile)
+				if err != nil {
+					return err
+				}
+				indexFileHandles[topic] = dh
+			}
+
+			indexes[topic] = index
+		}
+	}
+
+	for topic, index := range indexes {
+		log.Println("Flushing topic", topic)
+
+	}
 }
 
 func (ds fileDatastore) Close() {
@@ -138,6 +188,10 @@ func (ds *fileDatastore) CreateTopic(topic string) error {
 	return tx.Commit()
 }
 
+// Write algorithm
+// 1. Locate topic
+// 2. Compare flushIdx with writeIdx
+// 3. If room, put message in buffer and increment idx
 func (ds *fileDatastore) InsertMessage(topic string, message *api.Message) error {
 	store := ds.topics[topic]
 	index := store.index
@@ -163,6 +217,10 @@ func (ds *fileDatastore) ListMessages(topic string, limit int64, offset int64, i
 	return nil, nil
 }
 
+// Read algorithm
+// 1. Locate topic
+// 2. Lookup offset in cache
+// 3. If in cache,
 func (ds *fileDatastore) StreamMessages(topic string, offset int64, callback StreamingFunc) error {
 	store := ds.topics[topic]
 	index := store.index
