@@ -26,7 +26,8 @@ func (ds SqlDatastore) Close() {
 	ds.handle.Close()
 }
 
-func NewSqliteDatastore(fileName string, maxLogAge int64, maxLogSize int64) (*SqlDatastore, error) {
+func NewSqliteDatastore(dataDir string, maxLogAge int64, maxLogSize int64) (*SqlDatastore, error) {
+	fileName := fmt.Sprintf("%s/store.sqlite", dataDir)
 	db, err := sql.Open("sqlite3", fileName)
 	if err != nil {
 		log.Print("Opening Database:", err)
@@ -246,4 +247,8 @@ func (ds SqlDatastore) ListTopics() ([]string, error) {
 	}
 
 	return topics, nil
+}
+
+func (ds SqlDatastore) Flush() error {
+	return nil
 }

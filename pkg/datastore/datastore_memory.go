@@ -46,26 +46,15 @@ func (m *MemoryDatastore) CreateTopic(topic string) error {
 	return nil
 }
 
+func (m *MemoryDatastore) Flush() error {
+	return nil
+}
+
 func (m *MemoryDatastore) InsertMessage(topic string, message *api.Message) error {
 	m.topicLock[topic].Lock()
 	m.topicMap[topic] = append(m.topicMap[topic], message)
 	m.topicLock[topic].Unlock()
 	return nil
-}
-
-func (m *MemoryDatastore) ListMessages(topic string, limit int64, offset int64, insertTime int64) ([]*api.Message, error) {
-	m.topicLock[topic].Lock()
-	messages := m.topicMap[topic]
-	if offset > 0 {
-		offset = min(offset, int64(len(messages)))
-		messages = messages[offset:]
-	}
-	if limit > 0 {
-		limit = min(limit, int64(len(messages)))
-		messages = messages[:limit]
-	}
-	m.topicLock[topic].Unlock()
-	return messages, nil
 }
 
 func (m *MemoryDatastore) StreamMessages(topic string, offset int64, callback StreamingFunc) error {

@@ -5,10 +5,14 @@
 package datastore
 
 import (
+	"bytes"
 	"encoding/binary"
+	"fmt"
+	"golang.org/x/exp/mmap"
 	"log"
 	"os"
 	"sync"
+	"time"
 
 	"database/sql"
 
@@ -18,43 +22,45 @@ import (
 )
 
 type fileDatastore struct {
-	dataDir     string
-	topicDbFile string
-	topicDb     *sql.DB
-	topicLock   *sync.Mutex
-	topics      map[string]*topicIndex
+	dataDir string
+	topicDb *sql.DB
+
+	topics map[string]*topicData
 
 	maxBufferSize int64
 	maxLogSize    int64
 	maxLogAge     int64
 }
 
-type topicIndex struct {
-	indexFile string
-	dataFile  string
-	index     index
-	writeIdx  int64
-	flushIdx  int64
+type topicData struct {
+	lock  *sync.Mutex
+	index *index
 
-	data []*api.Message
+	reader    *mmap.ReaderAt
+	dataFile  *os.File
+	indexFile *os.File
 }
 
 type index struct {
-	header indexHeader
+	nextLoc int64
+	records []indexRecord
 }
 
+type indexRecord struct {
+	data     *api.Message
+	id       int64
+	location int64
+	size     int64
+}
+
+/*
 type indexHeader struct {
 	size      int64
 	location  int64
 	dataFile  string
 	nextIndex string
 }
-
-type indexRecord struct {
-	index    int64
-	location int64
-	size     int64
-}
+*/
 
 // Flush Algorithm
 // For each topic:
@@ -67,47 +73,67 @@ type indexRecord struct {
 // 7. Flush data & index (in order)
 // 8. Update flushIdx
 func (ds fileDatastore) Flush() error {
-	// Update filehandles
-	dataFileHandles := make(map[string]*os.File, 0)
-	indexFileHandles := make(map[string]*os.File, 0)
-	indexes := make(map[string]*topicIndex, 0)
+	for topic, data := range ds.topics {
+		data.lock.Lock()
+		defer data.lock.Unlock()
 
-	{
-		fs.topicLock.Lock()
-		defer fs.topicLock.Unlock()
-		for topic, index := range ds.topics {
-			if _, ok := dataFileHandles[topic]; !ok {
-				dh, err := os.Open(index.dataFile)
+		log.Println("Flushing topic", topic)
+		index := data.index
+		for _, record := range index.records {
+			if record.data != nil {
+				_, err := data.dataFile.Write(record.data.Payload)
 				if err != nil {
 					return err
 				}
-				dataFileHandles[topic] = dh
-			}
+				buf := new(bytes.Buffer)
+				binary.Write(buf, binary.LittleEndian, record.id)
+				binary.Write(buf, binary.LittleEndian, record.location)
+				binary.Write(buf, binary.LittleEndian, record.size)
+				binary.Write(buf, binary.LittleEndian, int64(0))
 
-			if _, ok := indexFileHandles[topic]; !ok {
-				dh, err := os.Open(index.indexFile)
+				_, err = data.indexFile.Write(buf.Bytes())
 				if err != nil {
 					return err
 				}
-				indexFileHandles[topic] = dh
+				record.data = nil
+				log.Println("Wrote record to disk", record.id)
 			}
-
-			indexes[topic] = index
+		}
+		err := data.dataFile.Sync()
+		if err != nil {
+			return err
+		}
+		err = data.indexFile.Sync()
+		if err != nil {
+			return err
 		}
 	}
-
-	for topic, index := range indexes {
-		log.Println("Flushing topic", topic)
-
-	}
+	return nil
 }
 
 func (ds fileDatastore) Close() {
+	for _, data := range ds.topics {
+		data.dataFile.Close()
+		data.indexFile.Close()
+	}
+}
+
+func indexFileName(topic string) string {
+	return fmt.Sprintf("%s/index.bin")
+}
+
+func dataFileName(topic string) string {
+	return fmt.Sprintf("%s/data.bin")
+}
+
+func dataDirName(topic string) string {
+	return fmt.Sprintf("data/%s/0", topic)
 }
 
 func NewFileDatastore(dataDir string, maxLogAge int64, maxLogSize int64) (*fileDatastore, error) {
 
 	topicDbFile := dataDir + string(os.PathSeparator) + "store.db"
+
 	db, err := sql.Open("sqlite3", topicDbFile)
 	if err != nil {
 		log.Print("Opening Database:", err)
@@ -115,13 +141,11 @@ func NewFileDatastore(dataDir string, maxLogAge int64, maxLogSize int64) (*fileD
 	}
 
 	return &fileDatastore{
-		dataDir:     dataDir,
-		topicDb:     db,
-		topicLock:   &sync.Mutex{},
-		topicDbFile: topicDbFile,
-		maxLogSize:  maxLogSize,
-		maxLogAge:   maxLogAge,
-		topics:      make(map[string]*topicIndex),
+		dataDir:    dataDir,
+		topicDb:    db,
+		maxLogSize: maxLogSize,
+		maxLogAge:  maxLogAge,
+		topics:     make(map[string]*topicData),
 	}, nil
 }
 
@@ -139,10 +163,32 @@ func (ds *fileDatastore) Initialize() error {
 		return err
 	}
 	for _, topic := range topics {
-		// TODO: Read from disk
-		ds.topics[topic] = &topicIndex{
-			indexFile: "data" + string(os.PathSeparator) + "0" + string(os.PathSeparator) + "index.dat",
-			dataFile:  "data" + string(os.PathSeparator) + "0" + string(os.PathSeparator) + "data.bin",
+		indexFh, err := os.OpenFile(indexFileName(topic), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return err
+		}
+
+		dataFh, err := os.OpenFile(dataFileName(topic), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return err
+		}
+
+		reader, err := mmap.Open(dataFileName(topic))
+		if err != nil {
+			return err
+		}
+
+		idx := &index{
+			nextLoc: 0,                      // TODO: Read from index file header
+			records: make([]indexRecord, 0), // Read from index file
+		}
+
+		ds.topics[topic] = &topicData{
+			lock:      &sync.Mutex{},
+			indexFile: indexFh,
+			dataFile:  dataFh,
+			reader:    reader,
+			index:     idx,
 		}
 	}
 	return nil
@@ -168,22 +214,33 @@ func (ds *fileDatastore) CreateTopic(topic string) error {
 		return err
 	}
 
-	ds.topicLock.Lock()
-	ds.topics[topic] = &topicIndex{
-		indexFile: "data" + string(os.PathSeparator) + "0" + string(os.PathSeparator) + "index0.dat",
-		dataFile:  "data" + string(os.PathSeparator) + "0" + string(os.PathSeparator) + "data0.bin",
+	err = os.MkdirAll(dataDirName(topic), os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	indexFile, err := os.OpenFile(indexFileName(topic), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	dataFile, err := os.OpenFile(dataFileName(topic), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	reader, err := mmap.Open(dataFileName(topic))
+	if err != nil {
+		return err
+	}
+	ds.topics[topic] = &topicData{
+		lock: &sync.Mutex{},
 		index: &index{
-			header: &indexHeader{
-				size:      0,
-				location:  0,
-				dataFile:  "data0.bin",
-				nextIndex: "",
-			},
+			nextLoc: 0,
 			records: make([]indexRecord, 0),
 		},
-		data: make([]*api.Message, 0),
+		reader:    reader,
+		indexFile: indexFile,
+		dataFile:  dataFile,
 	}
-	ds.topicLock.Unlock()
 
 	return tx.Commit()
 }
@@ -194,19 +251,20 @@ func (ds *fileDatastore) CreateTopic(topic string) error {
 // 3. If room, put message in buffer and increment idx
 func (ds *fileDatastore) InsertMessage(topic string, message *api.Message) error {
 	store := ds.topics[topic]
-	index := store.index
 
+	index := store.index
 	// TODO: Use circular fast buffers with atomic operations
-	index.Lock()
-	defer index.Unlock()
-	store.data = append(store.data, message)
+	store.lock.Lock()
+	defer store.lock.Unlock()
 	record := indexRecord{
-		index:    message.Id,
-		location: index.header.location,
-		size:     len(message.Payload),
+		data:     message,
+		id:       message.Id,
+		size:     int64(len(message.Payload)),
+		location: index.nextLoc,
 	}
 	index.records = append(index.records, record)
-	index.header.location += record.size
+	index.nextLoc += record.size
+	return nil
 }
 
 func (ds *fileDatastore) GarbageCollect(topic string) error {
@@ -219,33 +277,60 @@ func (ds *fileDatastore) ListMessages(topic string, limit int64, offset int64, i
 
 // Read algorithm
 // 1. Locate topic
-// 2. Lookup offset in cache
+// 2. Lookup id in index using binary search
 // 3. If in cache,
 func (ds *fileDatastore) StreamMessages(topic string, offset int64, callback StreamingFunc) error {
 	store := ds.topics[topic]
 	index := store.index
 
-	index.Lock()
-	defer index.Unlock()
-	for _, record := range index.records {
+	store.lock.Lock()
+	defer store.lock.Unlock()
+	if len(index.records) == 0 {
+		return nil
+	}
 
+	// TODO: Use binary search to find record
+	for _, record := range index.records {
+		if record.id >= offset {
+			data := record.data
+			if data == nil {
+				// Do memory mapped lookup
+				d := make([]byte, record.size)
+				_, err := store.reader.ReadAt(d, record.location)
+				if err != nil {
+					return err
+				}
+				data = api.NewMessage(record.id, d)
+			}
+			err := callback(data)
+			if err != nil {
+				return err
+			}
+		}
 	}
-	store.data = append(store.data, message)
-	record := indexRecord{
-		index:    message.Id,
-		location: index.header.location,
-		size:     len(message.Payload),
-	}
-	index.records = append(index.records, record)
-	index.header.location += record.size
+	return nil
 }
 
 func (ds *fileDatastore) NumMessages(topic string) (int64, error) {
-	return 0, nil
+	store := ds.topics[topic]
+	index := store.index
+
+	store.lock.Lock()
+	defer store.lock.Unlock()
+	return int64(len(index.records)), nil
 }
 
 func (ds *fileDatastore) LastMessageId(topic string) (int64, error) {
-	return 0, nil
+	store := ds.topics[topic]
+	index := store.index
+
+	store.lock.Lock()
+	defer store.lock.Unlock()
+	if len(index.records) == 0 {
+		return -1, nil
+	} else {
+		return index.records[0].id, nil
+	}
 }
 
 func (ds *fileDatastore) ListTopics() ([]string, error) {
@@ -275,4 +360,14 @@ func (ds *fileDatastore) ListTopics() ([]string, error) {
 	}
 
 	return topics, nil
+}
+
+func Flusher(flushInterval time.Duration, ds Datastore) {
+	for {
+		time.Sleep(flushInterval * time.Second)
+		err := ds.Flush()
+		if err != nil {
+			log.Println("Error flush datastore:", err)
+		}
+	}
 }

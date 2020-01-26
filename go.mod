@@ -6,4 +6,5 @@ require (
 	github.com/apache/qpid-proton v0.0.0-20191030003658-d693de22cceb
 	github.com/mattn/go-sqlite3 v1.10.0
 	github.com/stretchr/testify v1.3.0
+	golang.org/x/exp v0.0.0-20200119233911-0405dc783f0a
 )

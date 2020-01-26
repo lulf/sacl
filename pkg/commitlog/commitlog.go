@@ -54,7 +54,7 @@ func (cl *CommitLog) GetOrNewTopic(topicName string) (*Topic, error) {
 		log.Print("Creating topic:", err)
 		return nil, err
 	}
-	topic = createTopic(topicName, 0, cl.ds)
+	topic = createTopic(topicName, -1, cl.ds)
 	cl.topicMap[topicName] = topic
 	go topic.run()
 	return topic, nil
