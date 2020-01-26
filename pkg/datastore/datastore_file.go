@@ -11,7 +11,6 @@ import (
 	"golang.org/x/exp/mmap"
 	"log"
 	"os"
-	"runtime"
 	"sync"
 	"time"
 
