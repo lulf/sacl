@@ -155,7 +155,7 @@ func (s *Server) sender(snd electron.Sender, sub *commitlog.Subscriber) {
 			})
 
 			if err != nil {
-				log.Print("Error polling events for sub", err)
+				log.Print("Error streaming events for sub:", err)
 				snd.Close(nil)
 				sub.Close()
 				return

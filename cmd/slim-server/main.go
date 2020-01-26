@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"runtime/pprof"
 	"time"
 
 	"github.com/lulf/slim/pkg/commitlog"
@@ -43,8 +44,14 @@ func main() {
 	}
 	flag.Parse()
 
-	var ds datastore.Datastore
 	var err error
+
+	err = os.MkdirAll(dataDir, os.ModePerm)
+	if err != nil {
+		log.Fatal("Error creating datadir:", err)
+	}
+
+	var ds datastore.Datastore
 	if dataStoreType == "memory" {
 		ds, err = datastore.NewMemoryDatastore()
 	} else if dataStoreType == "sqlite" {
@@ -86,5 +93,15 @@ func main() {
 	defer listener.Close()
 	fmt.Printf("Listening on %v\n", listener.Addr())
 
+	go func() {
+		time.Sleep(50 * time.Second)
+		out, err := os.Create("slim-server.mprof")
+		if err != nil {
+			log.Fatal("Creating profile:", err)
+		}
+
+		pprof.WriteHeapProfile(out)
+		out.Close()
+	}()
 	es.Run(listener)
 }

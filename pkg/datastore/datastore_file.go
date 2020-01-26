@@ -11,6 +11,7 @@ import (
 	"golang.org/x/exp/mmap"
 	"log"
 	"os"
+	"runtime"
 	"sync"
 	"time"
 
@@ -79,7 +80,8 @@ func (ds fileDatastore) Flush() error {
 
 		log.Println("Flushing topic", topic)
 		index := data.index
-		for _, record := range index.records {
+		for i, _ := range index.records {
+			record := &index.records[i]
 			if record.data != nil {
 				_, err := data.dataFile.Write(record.data.Payload)
 				if err != nil {
@@ -96,7 +98,6 @@ func (ds fileDatastore) Flush() error {
 					return err
 				}
 				record.data = nil
-				log.Println("Wrote record to disk", record.id)
 			}
 		}
 		err := data.dataFile.Sync()
@@ -107,6 +108,17 @@ func (ds fileDatastore) Flush() error {
 		if err != nil {
 			return err
 		}
+		// Reopen mmaped file
+		err = data.reader.Close()
+		if err != nil {
+			return err
+		}
+		reader, err := mmap.Open(dataFileName(topic))
+		if err != nil {
+			return err
+		}
+		data.reader = reader
+
 	}
 	return nil
 }
@@ -119,11 +131,11 @@ func (ds fileDatastore) Close() {
 }
 
 func indexFileName(topic string) string {
-	return fmt.Sprintf("%s/index.bin")
+	return fmt.Sprintf("%s/index.bin", dataDirName(topic))
 }
 
 func dataFileName(topic string) string {
-	return fmt.Sprintf("%s/data.bin")
+	return fmt.Sprintf("%s/data.bin", dataDirName(topic))
 }
 
 func dataDirName(topic string) string {
@@ -365,6 +377,7 @@ func (ds *fileDatastore) ListTopics() ([]string, error) {
 func Flusher(flushInterval time.Duration, ds Datastore) {
 	for {
 		time.Sleep(flushInterval * time.Second)
+		log.Println("Flushing datastore")
 		err := ds.Flush()
 		if err != nil {
 			log.Println("Error flush datastore:", err)
