@@ -5,13 +5,10 @@
 package datastore
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
-	"golang.org/x/exp/mmap"
 	"log"
 	"os"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"database/sql"
@@ -27,97 +24,24 @@ type fileDatastore struct {
 
 	topics map[string]*topicData
 
-	maxBufferSize int64
-	maxLogSize    int64
-	maxLogAge     int64
+	maxSegmentSize int64
+	maxBufferSize  int64
+	maxLogSize     int64
+	maxLogAge      int64
 }
 
 type topicData struct {
-	lock  *sync.Mutex
-	index *index
+	nextFileOffset int64
+	lastFileOffset int64
 
-	reader    *mmap.ReaderAt
-	dataFile  *os.File
-	indexFile *os.File
+	dataFile  *mappedFile
+	indexFile *mappedFile
 }
 
-type index struct {
-	nextLoc int64
-	records []indexRecord
-}
-
-type indexRecord struct {
-	data     *api.Message
-	id       int64
-	location int64
-	size     int64
-}
-
-/*
-type indexHeader struct {
-	size      int64
-	location  int64
-	dataFile  string
-	nextIndex string
-}
-*/
-
-// Flush Algorithm
-// For each topic:
-// 1. Atomically compare flush vs write index
-// 2. If available, fetch next message
-// 3. Append message to current position known in header
-// 4. Increment header location and size
-// 5. Append index entry with index, location and size
-// 6. Write index header
-// 7. Flush data & index (in order)
-// 8. Update flushIdx
 func (ds fileDatastore) Flush() error {
-	for topic, data := range ds.topics {
-		data.lock.Lock()
-		defer data.lock.Unlock()
-
-		log.Println("Flushing topic", topic)
-		index := data.index
-		for i, _ := range index.records {
-			record := &index.records[i]
-			if record.data != nil {
-				_, err := data.dataFile.Write(record.data.Payload)
-				if err != nil {
-					return err
-				}
-				buf := new(bytes.Buffer)
-				binary.Write(buf, binary.LittleEndian, record.id)
-				binary.Write(buf, binary.LittleEndian, record.location)
-				binary.Write(buf, binary.LittleEndian, record.size)
-				binary.Write(buf, binary.LittleEndian, int64(0))
-
-				_, err = data.indexFile.Write(buf.Bytes())
-				if err != nil {
-					return err
-				}
-				record.data = nil
-			}
-		}
-		err := data.dataFile.Sync()
-		if err != nil {
-			return err
-		}
-		err = data.indexFile.Sync()
-		if err != nil {
-			return err
-		}
-		// Reopen mmaped file
-		err = data.reader.Close()
-		if err != nil {
-			return err
-		}
-		reader, err := mmap.Open(dataFileName(topic))
-		if err != nil {
-			return err
-		}
-		data.reader = reader
-
+	for _, data := range ds.topics {
+		data.dataFile.Sync()
+		data.indexFile.Sync()
 	}
 	return nil
 }
@@ -152,11 +76,12 @@ func NewFileDatastore(dataDir string, maxLogAge int64, maxLogSize int64) (*fileD
 	}
 
 	return &fileDatastore{
-		dataDir:    dataDir,
-		topicDb:    db,
-		maxLogSize: maxLogSize,
-		maxLogAge:  maxLogAge,
-		topics:     make(map[string]*topicData),
+		dataDir:        dataDir,
+		topicDb:        db,
+		maxSegmentSize: 10 * 1024 * 1024,
+		maxLogSize:     maxLogSize,
+		maxLogAge:      maxLogAge,
+		topics:         make(map[string]*topicData),
 	}, nil
 }
 
@@ -174,32 +99,21 @@ func (ds *fileDatastore) Initialize() error {
 		return err
 	}
 	for _, topic := range topics {
-		indexFh, err := os.OpenFile(indexFileName(topic), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		indexFile, err := OpenMapped(indexFileName(topic))
 		if err != nil {
 			return err
 		}
 
-		dataFh, err := os.OpenFile(dataFileName(topic), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		dataFile, err := OpenMapped(dataFileName(topic))
 		if err != nil {
 			return err
-		}
-
-		reader, err := mmap.Open(dataFileName(topic))
-		if err != nil {
-			return err
-		}
-
-		idx := &index{
-			nextLoc: 0,                      // TODO: Read from index file header
-			records: make([]indexRecord, 0), // Read from index file
 		}
 
 		ds.topics[topic] = &topicData{
-			lock:      &sync.Mutex{},
-			indexFile: indexFh,
-			dataFile:  dataFh,
-			reader:    reader,
-			index:     idx,
+			nextFileOffset: 0,
+			lastFileOffset: -1,
+			indexFile:      indexFile,
+			dataFile:       dataFile,
 		}
 	}
 	return nil
@@ -230,27 +144,20 @@ func (ds *fileDatastore) CreateTopic(topic string) error {
 		return err
 	}
 
-	indexFile, err := os.OpenFile(indexFileName(topic), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	indexFile, err := OpenMapped(indexFileName(topic))
 	if err != nil {
 		return err
 	}
-	dataFile, err := os.OpenFile(dataFileName(topic), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
-	}
-	reader, err := mmap.Open(dataFileName(topic))
+
+	dataFile, err := OpenMapped(dataFileName(topic))
 	if err != nil {
 		return err
 	}
 	ds.topics[topic] = &topicData{
-		lock: &sync.Mutex{},
-		index: &index{
-			nextLoc: 0,
-			records: make([]indexRecord, 0),
-		},
-		reader:    reader,
-		indexFile: indexFile,
-		dataFile:  dataFile,
+		nextFileOffset: 0,
+		lastFileOffset: -1,
+		indexFile:      indexFile,
+		dataFile:       dataFile,
 	}
 
 	return tx.Commit()
@@ -263,18 +170,18 @@ func (ds *fileDatastore) CreateTopic(topic string) error {
 func (ds *fileDatastore) InsertMessage(topic string, message *api.Message) error {
 	store := ds.topics[topic]
 
-	index := store.index
-	// TODO: Use circular fast buffers with atomic operations
-	store.lock.Lock()
-	defer store.lock.Unlock()
-	record := indexRecord{
-		data:     message,
-		id:       message.Id,
-		size:     int64(len(message.Payload)),
-		location: index.nextLoc,
+	// log.Println("Appending message", message, store.nextFileOffset)
+	err := store.dataFile.AppendMessage(message)
+	if err != nil {
+		return err
 	}
-	index.records = append(index.records, record)
-	index.nextLoc += record.size
+
+	err = store.indexFile.AppendIndex(message.Offset, store.nextFileOffset)
+	if err != nil {
+		return err
+	}
+	atomic.StoreInt64(&store.lastFileOffset, store.nextFileOffset)
+	store.nextFileOffset += (16 + int64(len(message.Payload)))
 	return nil
 }
 
@@ -292,56 +199,42 @@ func (ds *fileDatastore) ListMessages(topic string, limit int64, offset int64, i
 // 3. If in cache,
 func (ds *fileDatastore) StreamMessages(topic string, offset int64, callback StreamingFunc) error {
 	store := ds.topics[topic]
-	index := store.index
 
-	store.lock.Lock()
-	defer store.lock.Unlock()
-	if len(index.records) == 0 {
-		return nil
+	if offset < 0 {
+		offset = 0
 	}
-
-	// TODO: Use binary search to find record
-	for _, record := range index.records {
-		if record.id >= offset {
-			data := record.data
-			if data == nil {
-				// Do memory mapped lookup
-				d := make([]byte, record.size)
-				_, err := store.reader.ReadAt(d, record.location)
-				if err != nil {
-					return err
-				}
-				data = api.NewMessage(record.id, d)
-			}
-			err := callback(data)
-			if err != nil {
-				return err
-			}
+	for {
+		//log.Println("Streaming message", offset)
+		fileOffset, err := store.indexFile.ReadFileOffset(offset)
+		if err != nil {
+			return err
 		}
+		//log.Println("Located file offset", fileOffset, store.lastFileOffset)
+		if fileOffset < 0 || fileOffset > atomic.LoadInt64(&store.lastFileOffset) {
+			return nil
+		}
+		message, err := store.dataFile.ReadMessageAt(fileOffset)
+		if err != nil {
+			return err
+		}
+		//log.Println("Located message", message)
+
+		err = callback(message)
+		if err != nil {
+			return err
+		}
+		offset += 1
 	}
 	return nil
 }
 
 func (ds *fileDatastore) NumMessages(topic string) (int64, error) {
-	store := ds.topics[topic]
-	index := store.index
-
-	store.lock.Lock()
-	defer store.lock.Unlock()
-	return int64(len(index.records)), nil
+	return 0, nil
 }
 
-func (ds *fileDatastore) LastMessageId(topic string) (int64, error) {
-	store := ds.topics[topic]
-	index := store.index
-
-	store.lock.Lock()
-	defer store.lock.Unlock()
-	if len(index.records) == 0 {
-		return -1, nil
-	} else {
-		return index.records[0].id, nil
-	}
+func (ds *fileDatastore) LastOffset(topic string) (int64, error) {
+	// TODO: Read index header
+	return -1, nil
 }
 
 func (ds *fileDatastore) ListTopics() ([]string, error) {

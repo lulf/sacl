@@ -19,14 +19,14 @@ func (topic *Topic) run() {
 	for {
 		e := <-topic.incoming
 		m := e.message
-		m.Id = atomic.AddInt64(&topic.idCounter, 1)
+		m.Offset = atomic.AddInt64(&topic.offsetCounter, 1)
 		err := topic.ds.InsertMessage(topic.name, m)
 		if err != nil {
 			log.Print("Inserting event:", err)
 			e.listener(false)
 			continue
 		}
-		atomic.StoreInt64(&topic.lastCommitted, m.Id)
+		atomic.StoreInt64(&topic.lastCommitted, m.Offset)
 		e.listener(true)
 		for _, sub := range topic.subs {
 			sub.cond.Signal()
@@ -41,6 +41,7 @@ func (topic *Topic) NewSubscriber(id string, offset int64, since int64) *Subscri
 	if offset == -1 || offset >= lastCommitted {
 		offset = lastCommitted
 	}
+	log.Println("NewSubscriber", offset, lastCommitted)
 	sub := &Subscriber{
 		id:     id,
 		topic:  topic,

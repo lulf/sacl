@@ -28,8 +28,8 @@ type CommitLog struct {
 type Topic struct {
 	name          string
 	ds            datastore.Datastore
-	idCounter     int64
 	lastCommitted int64
+	offsetCounter int64
 	incoming      chan *Entry
 	subs          map[string]*Subscriber
 	subLock       *sync.Mutex

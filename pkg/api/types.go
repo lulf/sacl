@@ -5,13 +5,13 @@
 package api
 
 type Message struct {
-	Id      int64
+	Offset  int64
 	Payload []byte
 }
 
-func NewMessage(id int64, payload []byte) *Message {
+func NewMessage(offset int64, payload []byte) *Message {
 	return &Message{
-		Id:      id,
+		Offset:  offset,
 		Payload: payload,
 	}
 }

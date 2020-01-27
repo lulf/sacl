@@ -13,10 +13,10 @@ import (
 )
 
 func tempDbFile(t *testing.T, prefix string) string {
-	f, err := ioutil.TempFile("", fmt.Sprintf("%s.*.db", prefix))
+	f, err := ioutil.TempDir("", fmt.Sprintf("%s.*.db", prefix))
 	assert.Nil(t, err)
 	assert.NotNil(t, f)
-	return f.Name()
+	return f
 }
 
 func TestCreateTopic(t *testing.T) {
@@ -26,10 +26,12 @@ func TestCreateTopic(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, ds)
 
+	ds.Initialize()
+
 	_, err = ds.handle.Exec("SELECT mytopic FROM sqlite_master WHERE type='table'")
 	assert.NotNil(t, err)
 
-	_, err = ds.CreateTopic("mytopic")
+	err = ds.CreateTopic("mytopic")
 	assert.Nil(t, err)
 
 	_, err = ds.handle.Exec("SELECT mytopic FROM sqlite_master WHERE type='table'")
@@ -42,8 +44,9 @@ func TestInsertMessage(t *testing.T) {
 	defer ds.Close()
 	assert.Nil(t, err)
 	assert.NotNil(t, ds)
+	ds.Initialize()
 
-	_, err = ds.CreateTopic("mytopic")
+	err = ds.CreateTopic("mytopic")
 	assert.Nil(t, err)
 
 	err = ds.InsertMessage("mytopic", api.NewMessage(1, []byte("payload1")))
@@ -77,6 +80,7 @@ func TestListMessages(t *testing.T) {
 	ds, err := NewSqliteDatastore(f, 6, 0)
 	defer ds.Close()
 	assert.NotNil(t, ds)
+	ds.Initialize()
 
 	ds.CreateTopic("mytopic")
 	ds.InsertMessage("mytopic", api.NewMessage(1, []byte("payload1")))
@@ -84,15 +88,15 @@ func TestListMessages(t *testing.T) {
 	ds.InsertMessage("mytopic", api.NewMessage(3, []byte("payload3")))
 	ds.InsertMessage("mytopic", api.NewMessage(4, []byte("payload4")))
 
-	lst, err := ds.ListMessages("mytopic", -1, 0)
+	lst, err := ds.ListMessages("mytopic", -1, 0, 0)
 	assert.Nil(t, err)
 	assert.Equal(t, 4, len(lst))
 
-	lst, err = ds.ListMessages("mytopic", -1, 2)
+	lst, err = ds.ListMessages("mytopic", -1, 2, 0)
 	assert.Nil(t, err)
 	assert.Equal(t, 2, len(lst))
 
-	lst, err = ds.ListMessages("mytopic", 1, 2)
+	lst, err = ds.ListMessages("mytopic", 1, 2, 0)
 	assert.Nil(t, err)
 	assert.Equal(t, 1, len(lst))
 }
@@ -102,6 +106,7 @@ func TestNumMessages(t *testing.T) {
 	ds, err := NewSqliteDatastore(f, 6, 0)
 	defer ds.Close()
 	assert.NotNil(t, ds)
+	ds.Initialize()
 
 	ds.CreateTopic("mytopic")
 	count, err := ds.NumMessages("mytopic")
@@ -123,7 +128,7 @@ func TestNumMessages(t *testing.T) {
 
 func countEntries(t *testing.T, ds *SqlDatastore) (int, error) {
 	var count int
-	row := ds.handle.QueryRow("SELECT COUNT(id) FROM mytopic")
+	row := ds.handle.QueryRow("SELECT COUNT(id) FROM topic_mytopic")
 	assert.NotNil(t, row)
 	err := row.Scan(&count)
 	return count, err

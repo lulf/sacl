@@ -17,7 +17,7 @@ type Datastore interface {
 	StreamMessages(topic string, offset int64, callback StreamingFunc) error
 	// Read the number of events stored
 	NumMessages(topic string) (int64, error)
-	LastMessageId(topic string) (int64, error)
+	LastOffset(topic string) (int64, error)
 	Flush() error
 	GarbageCollect(topic string) error
 	ListTopics() ([]string, error)

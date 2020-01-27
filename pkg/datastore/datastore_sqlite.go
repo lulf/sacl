@@ -104,7 +104,7 @@ func (ds SqlDatastore) InsertMessage(topic string, message *api.Message) error {
 	}
 	defer insertStmt.Close()
 
-	_, err = insertStmt.Exec(message.Id, insertionTime, message.Payload)
+	_, err = insertStmt.Exec(message.Offset, insertionTime, message.Payload)
 	if err != nil {
 		log.Print("Inserting entry:", err)
 		return err
@@ -213,7 +213,7 @@ func getTopicTableName(topic string) string {
 	return fmt.Sprintf("topic_%s", topic)
 }
 
-func (ds SqlDatastore) LastMessageId(topic string) (int64, error) {
+func (ds SqlDatastore) LastOffset(topic string) (int64, error) {
 	var count sql.NullInt64
 	row := ds.handle.QueryRow(fmt.Sprintf("SELECT MAX(id) FROM %s", getTopicTableName(topic)))
 	err := row.Scan(&count)

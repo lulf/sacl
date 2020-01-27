@@ -81,11 +81,11 @@ func (m *MemoryDatastore) NumMessages(topic string) (int64, error) {
 	return int64(len(m.topicMap[topic])), nil
 }
 
-func (m *MemoryDatastore) LastMessageId(topic string) (int64, error) {
+func (m *MemoryDatastore) LastOffset(topic string) (int64, error) {
 	m.topicLock[topic].Lock()
 	defer m.topicLock[topic].Unlock()
 	if len(m.topicMap[topic]) > 0 {
-		return m.topicMap[topic][len(m.topicMap[topic])-1].Id, nil
+		return m.topicMap[topic][len(m.topicMap[topic])-1].Offset, nil
 	}
 	return 0, nil
 }

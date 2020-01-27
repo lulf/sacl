@@ -54,7 +54,7 @@ func filterAsInt64(filter map[amqp.Symbol]interface{}, propertyName amqp.Symbol,
 		case int:
 			value = int64(propertyValue.(int))
 		default:
-			return 0, fmt.Errorf("Invalid value type", propertyValue)
+			return 0, fmt.Errorf("Invalid value type %s", propertyValue)
 		}
 	} else {
 		value = defaultValue
@@ -150,7 +150,7 @@ func (s *Server) sender(snd electron.Sender, sub *commitlog.Subscriber) {
 					log.Print("Error sending message:", outcome.Error)
 					return outcome.Error
 				}
-				sub.Commit(msg.Id)
+				sub.Commit(msg.Offset)
 				return nil
 			})
 
