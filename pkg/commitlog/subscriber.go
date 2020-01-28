@@ -18,7 +18,7 @@ func (s *Subscriber) Stream(callback StreamFn) error {
 	s.lock.Lock()
 	for {
 		lastCommitted = atomic.LoadInt64(&topic.lastCommitted)
-		if lastCommitted == s.offset {
+		if lastCommitted == s.offset-1 {
 			s.cond.Wait()
 		} else {
 			break
@@ -29,7 +29,7 @@ func (s *Subscriber) Stream(callback StreamFn) error {
 }
 
 func (s *Subscriber) Commit(offset int64) {
-	s.offset = offset
+	s.offset = offset + 1
 }
 
 func (s *Subscriber) Close() {

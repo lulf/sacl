@@ -6,9 +6,9 @@ package datastore
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
-	"sync/atomic"
 	"time"
 
 	"database/sql"
@@ -31,9 +31,6 @@ type fileDatastore struct {
 }
 
 type topicData struct {
-	nextFileOffset int64
-	lastFileOffset int64
-
 	dataFile  *mappedFile
 	indexFile *mappedFile
 }
@@ -110,10 +107,8 @@ func (ds *fileDatastore) Initialize() error {
 		}
 
 		ds.topics[topic] = &topicData{
-			nextFileOffset: 0,
-			lastFileOffset: -1,
-			indexFile:      indexFile,
-			dataFile:       dataFile,
+			indexFile: indexFile,
+			dataFile:  dataFile,
 		}
 	}
 	return nil
@@ -154,10 +149,8 @@ func (ds *fileDatastore) CreateTopic(topic string) error {
 		return err
 	}
 	ds.topics[topic] = &topicData{
-		nextFileOffset: 0,
-		lastFileOffset: -1,
-		indexFile:      indexFile,
-		dataFile:       dataFile,
+		indexFile: indexFile,
+		dataFile:  dataFile,
 	}
 
 	return tx.Commit()
@@ -171,17 +164,15 @@ func (ds *fileDatastore) InsertMessage(topic string, message *api.Message) error
 	store := ds.topics[topic]
 
 	// log.Println("Appending message", message, store.nextFileOffset)
-	err := store.dataFile.AppendMessage(message)
+	dataOffset, err := store.dataFile.AppendMessage(message)
 	if err != nil {
 		return err
 	}
 
-	err = store.indexFile.AppendIndex(message.Offset, store.nextFileOffset)
+	err = store.indexFile.AppendIndex(message.Offset, dataOffset)
 	if err != nil {
 		return err
 	}
-	atomic.StoreInt64(&store.lastFileOffset, store.nextFileOffset)
-	store.nextFileOffset += (16 + int64(len(message.Payload)))
 	return nil
 }
 
@@ -204,15 +195,17 @@ func (ds *fileDatastore) StreamMessages(topic string, offset int64, callback Str
 		offset = 0
 	}
 	for {
-		//log.Println("Streaming message", offset)
+		// log.Println("Streaming message", offset)
 		fileOffset, err := store.indexFile.ReadFileOffset(offset)
 		if err != nil {
+			// log.Println("ERROR", err)
+			if err == io.EOF {
+				// log.Println("Stoooping stream")
+				return nil
+			}
 			return err
 		}
-		//log.Println("Located file offset", fileOffset, store.lastFileOffset)
-		if fileOffset < 0 || fileOffset > atomic.LoadInt64(&store.lastFileOffset) {
-			return nil
-		}
+		// log.Println("Located file offset", fileOffset)
 		message, err := store.dataFile.ReadMessageAt(fileOffset)
 		if err != nil {
 			return err
@@ -233,8 +226,8 @@ func (ds *fileDatastore) NumMessages(topic string) (int64, error) {
 }
 
 func (ds *fileDatastore) LastOffset(topic string) (int64, error) {
-	// TODO: Read index header
-	return -1, nil
+	data := ds.topics[topic]
+	return data.indexFile.ReadLastOffset()
 }
 
 func (ds *fileDatastore) ListTopics() ([]string, error) {

@@ -38,10 +38,9 @@ func (topic *Topic) NewSubscriber(id string, offset int64, since int64) *Subscri
 	lock := &sync.Mutex{}
 	cond := sync.NewCond(lock)
 	lastCommitted := atomic.LoadInt64(&topic.lastCommitted)
-	if offset == -1 || offset >= lastCommitted {
+	if offset < 0 || offset > lastCommitted {
 		offset = lastCommitted
 	}
-	log.Println("NewSubscriber", offset, lastCommitted)
 	sub := &Subscriber{
 		id:     id,
 		topic:  topic,
